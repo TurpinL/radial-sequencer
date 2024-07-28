@@ -22,4 +22,5 @@ float degBetweenAngles(float a, float b) {
   return (abs(angA) < abs(angB)) ? angA : angB;
 }
 
+const char* indexToNote[] = {"C", "C", "D", "D", "E", "F", "F", "G", "G", "A", "A", "B"};
 #endif

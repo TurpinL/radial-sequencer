@@ -19,8 +19,9 @@ class Vec2 {
       return Vec2(x + rhs.x, y + rhs.y);
     }
 
+    // 0º is up
     static Vec2 fromPolar(float radius, float degrees) {
-      float tau = degrees * DEG_TO_TAU;
+      float tau = (degrees - 90) * DEG_TO_TAU;
       float x = radius * cosf(tau);
       float y = radius * sinf(tau);
 
