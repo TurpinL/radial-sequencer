@@ -23,4 +23,5 @@ float degBetweenAngles(float a, float b) {
 }
 
 const char* indexToNote[] = {"C", "C", "D", "D", "E", "F", "F", "G", "G", "A", "A", "B"};
+
 #endif
