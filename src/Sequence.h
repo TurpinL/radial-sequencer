@@ -8,6 +8,7 @@
 class Stage {
     public:
         float voltage = 2;
+        uint8_t pulseCount = 4;
 };
 
 class Sequence {
@@ -19,6 +20,8 @@ class Sequence {
 
             for (int i = 0; i < 8; i++) {
                 addStage();
+                _stages.back().pulseCount = i + 1;
+                _stages.back().voltage = (rand() % 100) / 150.f + 0.25f;
             }
 
             _activeStage = &_stages.front();
@@ -41,9 +44,14 @@ class Sequence {
             if (elapsedMicros - _lastPulseMicros >= _microsPerPulse) {
                 _lastPulseMicros += _microsPerPulse;
 
-                size_t nextStageIndex = (indexOfActiveStage() + 1) % _stages.size();
-
-                _activeStage = &_stages.at(nextStageIndex);
+                if (isLastPulseOfStage()) {
+                    // Proceed to next stage
+                    _currentPulseInStage = 0;
+                    size_t nextStageIndex = (indexOfActiveStage() + 1) % _stages.size();
+                    _activeStage = &_stages.at(nextStageIndex);
+                } else {
+                    _currentPulseInStage++;
+                }
             }
 
             _gate = elapsedMicros - _lastPulseMicros <= (_microsPerPulse * _gateLength);
@@ -66,6 +74,10 @@ class Sequence {
             return _pulseAnticipation;
         }
 
+        bool isLastPulseOfStage() {
+            return _currentPulseInStage >= _activeStage->pulseCount - 1;
+        }
+
         bool getGate() {
             return _gate;
         }
@@ -83,14 +95,16 @@ class Sequence {
         }
     private:
         std::vector<Stage> _stages;
-        Stage* _activeStage;
+        Stage* _activeStage; 
         float _bpm = 120;
         uint8_t _subdivision = 2;
         unsigned long _microsPerPulse;
         unsigned long _lastPulseMicros = 0;
         float _gateLength = 0.75f; // 1 = always on, 0 = never on
-        bool _gate = false;
         float _pulseAnticipation; // How close are we to the next pulse
+        uint8_t _currentPulseInStage = 0; // How many pulses have occurred for the current stage
+
+        bool _gate = false;
 
         void _updateMicrosPerPulse() {
             _microsPerPulse = 60000000 / _bpm / _subdivision;
