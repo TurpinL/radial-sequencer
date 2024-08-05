@@ -18,10 +18,10 @@ class Sequence {
             stageCount = max(1, stageCount);
             stageCount = min(MAX_STAGES, stageCount);
 
-            for (int i = 0; i < 8; i++) {
+            for (int i = 0; i < stageCount; i++) {
                 addStage();
-                _stages.back().pulseCount = i + 1;
-                _stages.back().voltage = (rand() % 100) / 150.f + 0.25f;
+                _stages.back().pulseCount = (i % 8) + 1;
+                _stages.back().voltage = ((rand() % 100) - 25) / 50.f;
             }
 
             _activeStage = &_stages.front();

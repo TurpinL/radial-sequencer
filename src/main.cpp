@@ -17,7 +17,7 @@ uint16_t* screenPtr;
 
 const Vec2 screenCenter = Vec2(SCREEN_HALF_WIDTH, SCREEN_HEIGHT / 2);
 
-Sequence sequence = Sequence(8);
+Sequence sequence = Sequence(16);
 
 SineCosinePot endlessPot = SineCosinePot(0, 1);
 float cursorAngle = 0;
@@ -57,7 +57,7 @@ void loop() {
     render();
 
     int32_t deltaMillis = millis() - lastFrameMillis;
-    fps = 1000 / deltaMillis;
+    fps = 100000 / deltaMillis;
 
     lastFrameMillis = millis();
   }
@@ -82,10 +82,7 @@ void processInput() {
 void drawPulsePips(Stage& stage, float angle, Vec2 pos) {
   // TODO: Gate Modes
   int rowCount = stage.pulseCount / 4 + (stage.pulseCount % 4 > 0);
-  int pxPerPulse = 4;
-  int pxPadding = 4;
-
-  float foo = 0;
+  int pxPerPip = 5;
 
   for (int row = 0; row < rowCount; row++) {
     bool isLastRow = row == rowCount - 1;
@@ -93,24 +90,26 @@ void drawPulsePips(Stage& stage, float angle, Vec2 pos) {
 
     // Rows 2 and 4 are in the outer shell
     int rowRadius = 20 + ((row == 0 || row == 2) ? 0 : 6);
-    float degsPerPulse = degsPerPixel[rowRadius] * pxPerPulse;
-    float degsOfPadding = degsPerPixel[rowRadius] * pxPadding;
-    float degsBetweenCenters = degsPerPulse + degsOfPadding;
+    float degsOfPadding = degsPerPixel[rowRadius] * pxPerPip;
 
-    float startAngle = (pulsesInRow - 1) * -0.5f * degsBetweenCenters;
+    float startAngle = (pulsesInRow - 1) * -0.5f * degsOfPadding + 180;
 
     for (int pulse = 0; pulse < pulsesInRow; pulse++) {
-      float pulseCenter = angle + startAngle + (pulsesInRow - pulse - 1) * degsBetweenCenters;
-      float pulseStart = wrapDeg(pulseCenter - degsPerPulse / 2.f);
-      float pulseEnd = wrapDeg(pulseStart + degsPerPulse);
-      foo += pulseCenter;
+      float pulseAngle = angle + startAngle + (pulsesInRow - pulse - 1) * degsOfPadding;
+     
+      Vec2 pipPos = pos + Vec2::fromPolar(rowRadius, pulseAngle);
+      screen.drawPixel(
+        pipPos.x, pipPos.y, // Position
+        TFT_WHITE
+      );
 
-      screen.drawArc(
-        pos.x, pos.y, // Position
-        rowRadius + 4, rowRadius, // Radius, Inner Radius
-        pulseStart, pulseEnd, // Arc start & end 
-        TFT_WHITE, TFT_BLACK, // Colour, AA Colour
-        false // Smoothing
+      int x = (pos.x > 160) - (pos.x < 80);
+      int y = (pos.y > 160) - (pos.y < 80);
+      // int y = sgn(pos.y - SCREEN_HALF_HEIGHT);
+
+      screen.drawPixel(
+        pipPos.x + x, pipPos.y + y, // Position
+        TFT_WHITE
       );
     }
   }
@@ -120,7 +119,7 @@ void render() {
   screen.fillSprite(TFT_BLACK);
 
   float degreesPerStage = 360 / (float)sequence.stageCount();
-  float stagePositionRadius = 90;
+  uint stagePositionRadius = 32 + 4 * sequence.stageCount();
 
   // Update selected stage
   float highlightedStageIndexAngle = highlightedStageIndex * degreesPerStage;
@@ -155,51 +154,36 @@ void render() {
     Stage curStage = sequence.getStage(i);
 
     uint16_t colour;
-    if (sequence.indexOfActiveStage() == i) {
-      colour = TFT_WHITE;
-    } else if (highlightedStageIndex == i) {
+    if (sequence.indexOfActiveStage() == i || highlightedStageIndex == i) {
       colour = TFT_WHITE;
     } else {
       colour = TFT_DARKGREY;
     }
 
-    if (curStage.voltage < 0) {
+    const float minVoltageSizeThing = 0.5f;
+
+    if (curStage.voltage <= -minVoltageSizeThing) {
+      screen.drawCircle(
+        stagePos.x, stagePos.y, // Position,
+        wrapDeg(-curStage.voltage * 10),
+        colour
+      );
+    } else if (curStage.voltage >= minVoltageSizeThing) {
+      screen.fillCircle(
+        stagePos.x, stagePos.y, // Position,
+        wrapDeg(curStage.voltage * 10),
+        colour
+      );
+    } else {
       screen.drawArc(
         stagePos.x, stagePos.y, // Position
-        9, 0, // Radius, Inner Radius
-        wrapDeg(angle - coerceInRange(-curStage.voltage * 360, 0, 359)) - 10, angle + 10, // Arc start & end 
+        minVoltageSizeThing * 10, 5 - (curStage.voltage + minVoltageSizeThing) * 5, // Radius, Inner Radius
+        0, 359, // Arc start & end 
         colour, TFT_BLACK, // Colour, AA Colour
         false // Smoothing
       );
-
-      screen.drawArc(
-        stagePos.x, stagePos.y, // Position
-        8, 2, // Radius, Inner Radius
-        wrapDeg(angle - coerceInRange(-curStage.voltage * 360, 0, 359)), angle, // Arc start & end 
-        TFT_BLACK, colour, // Colour, AA Colour
-        false // Smoothing
-      );
     }
-    
-
-
-    screen.drawArc(
-      stagePos.x, stagePos.y, // Position
-      8, 2, // Radius, Inner Radius
-      angle, wrapDeg(angle + coerceInRange(curStage.voltage * 360, 0, 359)), // Arc start & end 
-      colour, TFT_BLACK, // Colour, AA Colour
-      false // Smoothing
-    );
-
-    screen.drawArc(
-      stagePos.x, stagePos.y, // Position
-      14, 8, // Radius, Inner Radius
-      angle, wrapDeg(angle + coerceInRange(curStage.voltage * 360 - 360, 0, 359)), // Arc start & end 
-      colour, TFT_BLACK, // Colour, AA Colour
-      false // Smoothing
-    );
-
-    // screen.fillCircle(stagePos.x, stagePos.y, 16, rainbow(angle * 191 / 360, 0.5f));
+  
     drawPulsePips(curStage, angle, stagePos);
   }
 
