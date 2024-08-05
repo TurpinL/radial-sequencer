@@ -82,7 +82,7 @@ void processInput() {
 void drawPulsePips(Stage& stage, float angle, Vec2 pos) {
   // TODO: Gate Modes
   int rowCount = stage.pulseCount / 4 + (stage.pulseCount % 4 > 0);
-  int pxPerPip = 5;
+  int pxPerPip = 7;
 
   for (int row = 0; row < rowCount; row++) {
     bool isLastRow = row == rowCount - 1;
@@ -90,28 +90,47 @@ void drawPulsePips(Stage& stage, float angle, Vec2 pos) {
 
     // Rows 2 and 4 are in the outer shell
     int rowRadius = 20 + ((row == 0 || row == 2) ? 0 : 6);
-    float degsOfPadding = degsPerPixel[rowRadius] * pxPerPip;
+    float degPerPip = degsPerPixel[rowRadius] * pxPerPip;
 
-    float startAngle = (pulsesInRow - 1) * -0.5f * degsOfPadding + 180;
+    float startAngle = (pulsesInRow - 1) * -0.5f * degPerPip + 180;
 
     for (int pulse = 0; pulse < pulsesInRow; pulse++) {
-      float pulseAngle = angle + startAngle + (pulsesInRow - pulse - 1) * degsOfPadding;
+      float pulseAngle = angle + startAngle + (pulsesInRow - pulse - 1) * degPerPip;
      
       Vec2 pipPos = pos + Vec2::fromPolar(rowRadius, pulseAngle);
-      screen.drawPixel(
-        pipPos.x, pipPos.y, // Position
-        TFT_WHITE
-      );
-
-      int x = (pos.x > 160) - (pos.x < 80);
-      int y = (pos.y > 160) - (pos.y < 80);
-      // int y = sgn(pos.y - SCREEN_HALF_HEIGHT);
-
-      screen.drawPixel(
-        pipPos.x + x, pipPos.y + y, // Position
+      screen.fillRect(
+        pipPos.x - 1.5, pipPos.y - 1.5, // Position
+        3, 3,
         TFT_WHITE
       );
     }
+  }
+}
+
+void drawHeldPulses(Stage& stage, float angle, Vec2 pos) {
+  // TODO: Gate Modes
+  int rowCount = stage.pulseCount / 4 + (stage.pulseCount % 4 > 0);
+  int pxPerPip = 7;
+
+  for (int row = 0; row < rowCount; row++) {
+    bool isLastRow = row == rowCount - 1;
+    int pulsesInRow = min(4, stage.pulseCount - 4 * row);
+
+    // Rows 2 and 4 are in the outer shell
+    int rowRadius = 20 + ((row == 0 || row == 2) ? 0 : 6);
+    float degsPerPixelAtRadius = degsPerPixel[rowRadius];
+    float degPerPip = degsPerPixel[rowRadius] * pxPerPip;
+
+    float startAngle = wrapDeg(angle + (pulsesInRow - 1) * -0.5f * degPerPip - degsPerPixelAtRadius * 2);
+    float endAngle = wrapDeg(angle + (pulsesInRow - 1) * 0.5f * degPerPip + degsPerPixelAtRadius * 2);
+
+    screen.drawArc(
+      pos.x, pos.y, // Position
+      rowRadius + 2, rowRadius - 1, // Radius, Inner Radius
+      startAngle, endAngle, // Arc start & end 
+      TFT_WHITE, TFT_BLACK, // Colour, AA Colour
+      false // Smoothing
+    );
   }
 }
 
@@ -184,7 +203,7 @@ void render() {
       );
     }
   
-    drawPulsePips(curStage, angle, stagePos);
+    (i % 2) ? drawHeldPulses(curStage, angle, stagePos) : drawPulsePips(curStage, angle, stagePos);
   }
 
   // Cursor
