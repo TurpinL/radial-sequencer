@@ -5,10 +5,28 @@
 
 #include <vector>
 
+enum GateMode {
+    EACH,
+    HELD,
+    FIRST,
+    NONE
+};
+
 class Stage {
     public:
         float voltage = 2;
         uint8_t pulseCount = 4;
+        GateMode gateMode = EACH;
+
+        bool isPulseActive(uint8_t index) {
+            if (gateMode == HELD || gateMode == EACH) {
+                return true;
+            } else if (gateMode == FIRST && index == 0) {
+                return true;
+            } else {
+                return false;
+            }
+        }
 };
 
 class Sequence {
@@ -20,8 +38,9 @@ class Sequence {
 
             for (int i = 0; i < stageCount; i++) {
                 addStage();
-                _stages.back().pulseCount = (i % 8) + 1;
+                _stages.back().pulseCount = (rand() % 8) + 1;
                 _stages.back().voltage = ((rand() % 100) - 25) / 50.f;
+                _stages.back().gateMode = (GateMode)(i % 4);
             }
 
             _activeStage = &_stages.front();
@@ -66,8 +85,8 @@ class Sequence {
             }
         }
 
-        Stage* getActiveStage() {
-            return _activeStage;
+        Stage& getActiveStage() {
+            return *_activeStage;
         }
 
         float getPulseAnticipation() {
@@ -76,6 +95,10 @@ class Sequence {
 
         bool isLastPulseOfStage() {
             return _currentPulseInStage >= _activeStage->pulseCount - 1;
+        }
+
+        uint8_t getCurrentPulseInStage() {
+            return _currentPulseInStage;
         }
 
         bool getGate() {

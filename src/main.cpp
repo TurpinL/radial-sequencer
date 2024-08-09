@@ -11,6 +11,12 @@
 #define SCREEN_HEIGHT 240
 #define SCREEN_HALF_HEIGHT 120
 
+const uint16_t COLOUR_BG =        0x0000;
+const uint16_t COLOUR_BEAT =      0xfc48;
+const uint16_t COLOUR_ACTIVE =    0xf614;
+const uint16_t COLOUR_INACTIVE =  0xaa21;
+const uint16_t COLOUR_DISABLED =  0x5180;
+
 TFT_eSPI tft = TFT_eSPI();
 TFT_eSprite screen = TFT_eSprite(&tft);
 uint16_t* screenPtr;
@@ -40,7 +46,7 @@ void setup() {
   tft.init();
   tft.initDMA();
   tft.setRotation(3);
-  tft.fillScreen(TFT_BLACK);
+  tft.fillScreen(COLOUR_BG);
   screenPtr = (uint16_t*)screen.createSprite(SCREEN_WIDTH, SCREEN_HEIGHT);
   screen.setTextDatum(MC_DATUM);
   tft.startWrite(); // TFT chip select held low permanently
@@ -79,13 +85,12 @@ void processInput() {
   }
 }
 
-void drawPulsePips(Stage& stage, float angle, Vec2 pos) {
+void drawPulsePips(Stage& stage, float angle, Vec2 pos, int8_t currentPulseInStage) {
   // TODO: Gate Modes
   int rowCount = stage.pulseCount / 4 + (stage.pulseCount % 4 > 0);
   int pxPerPip = 7;
 
   for (int row = 0; row < rowCount; row++) {
-    bool isLastRow = row == rowCount - 1;
     int pulsesInRow = min(4, stage.pulseCount - 4 * row);
 
     // Rows 2 and 4 are in the outer shell
@@ -94,51 +99,91 @@ void drawPulsePips(Stage& stage, float angle, Vec2 pos) {
 
     float startAngle = (pulsesInRow - 1) * -0.5f * degPerPip + 180;
 
-    for (int pulse = 0; pulse < pulsesInRow; pulse++) {
-      float pulseAngle = angle + startAngle + (pulsesInRow - pulse - 1) * degPerPip;
-     
+    for (int rowIndex = 0; rowIndex < pulsesInRow; rowIndex++) {
+      float pulseAngle = angle + startAngle + (pulsesInRow - rowIndex - 1) * degPerPip;
+      uint8_t pulseIndex = row * 4 + rowIndex;
+
+      uint16_t colour;
+      if (!stage.isPulseActive(pulseIndex)) {
+        colour = COLOUR_DISABLED;
+      } else if (pulseIndex <= currentPulseInStage) {
+        colour = COLOUR_ACTIVE;
+      } else {
+        colour = COLOUR_INACTIVE;
+      }
+
       Vec2 pipPos = pos + Vec2::fromPolar(rowRadius, pulseAngle);
       screen.fillRect(
         pipPos.x - 1.5, pipPos.y - 1.5, // Position
         3, 3,
-        TFT_WHITE
+        colour
       );
     }
   }
 }
 
 void drawHeldPulses(Stage& stage, float angle, Vec2 pos) {
+  bool isStageActive = &stage == &(sequence.getActiveStage());
+
+  // 0 to pulseCount
+  float progress;
+  if (isStageActive) {
+    progress = sequence.getCurrentPulseInStage() + sequence.getPulseAnticipation();
+  } else {
+    progress = 0;
+  } 
+
   // TODO: Gate Modes
   int rowCount = stage.pulseCount / 4 + (stage.pulseCount % 4 > 0);
   int pxPerPip = 7;
 
   for (int row = 0; row < rowCount; row++) {
-    bool isLastRow = row == rowCount - 1;
     int pulsesInRow = min(4, stage.pulseCount - 4 * row);
 
     // Rows 2 and 4 are in the outer shell
     int rowRadius = 20 + ((row == 0 || row == 2) ? 0 : 6);
-    float degsPerPixelAtRadius = degsPerPixel[rowRadius];
     float degPerPip = degsPerPixel[rowRadius] * pxPerPip;
 
-    float startAngle = wrapDeg(angle + (pulsesInRow - 1) * -0.5f * degPerPip - degsPerPixelAtRadius * 2);
-    float endAngle = wrapDeg(angle + (pulsesInRow - 1) * 0.5f * degPerPip + degsPerPixelAtRadius * 2);
+    float degsInArc = pulsesInRow * degPerPip;
+    float startAngle = wrapDeg(angle - degsInArc * 0.5f);
+    float endAngle = wrapDeg(angle + degsInArc * 0.5f);
 
     screen.drawArc(
       pos.x, pos.y, // Position
       rowRadius + 2, rowRadius - 1, // Radius, Inner Radius
       startAngle, endAngle, // Arc start & end 
-      TFT_WHITE, TFT_BLACK, // Colour, AA Colour
+      COLOUR_INACTIVE, COLOUR_BG, // Colour, AA Colour
       false // Smoothing
     );
+
+    if (progress > row * 4) { 
+      float rowProgress = min(1, (progress - row * 4) / pulsesInRow);
+
+      screen.drawArc(
+        pos.x, pos.y, // Position
+        rowRadius + 2, rowRadius - 1, // Radius, Inner Radius
+        wrapDeg(endAngle - degsInArc * rowProgress), endAngle, // Arc start & end 
+        COLOUR_ACTIVE, COLOUR_BG, // Colour, AA Colour
+        false // Smoothing
+      );
+    }
+  }
+}
+
+void drawPulses(Stage& stage, float angle, Vec2 pos, int8_t currentPulseInStage) {
+  if (stage.gateMode == HELD) {
+    drawHeldPulses(stage, angle, pos);
+  } else {
+    drawPulsePips(stage, angle, pos, currentPulseInStage);
   }
 }
 
 void render() {
-  screen.fillSprite(TFT_BLACK);
+  screen.fillSprite(COLOUR_BG);
 
   float degreesPerStage = 360 / (float)sequence.stageCount();
   uint stagePositionRadius = 32 + 4 * sequence.stageCount();
+
 
   // Update selected stage
   float highlightedStageIndexAngle = highlightedStageIndex * degreesPerStage;
@@ -162,21 +207,22 @@ void render() {
     auto pos = Vec2::fromPolar(stagePositionRadius, angle) + screenCenter;
     auto radius = 2 + 16 * powf(1 - progress, 3);
 
-    screen.fillCircle(pos.x, pos.y, radius, rainbow(angle * 191 / 360, 0.5f));
+    screen.fillCircle(pos.x, pos.y, radius, COLOUR_BEAT);
   }
 
   // Stages
   for (size_t i = 0; i < sequence.stageCount(); i++) {
+    bool isActive = sequence.indexOfActiveStage() == i;
     float angle = i * degreesPerStage;
     Vec2 stagePos = Vec2::fromPolar(stagePositionRadius, angle) + screenCenter;
   
-    Stage curStage = sequence.getStage(i);
+    Stage& curStage = sequence.getStage(i);
 
     uint16_t colour;
-    if (sequence.indexOfActiveStage() == i || highlightedStageIndex == i) {
-      colour = TFT_WHITE;
+    if (isActive || highlightedStageIndex == i) {
+      colour = COLOUR_ACTIVE;
     } else {
-      colour = TFT_DARKGREY;
+      colour = COLOUR_INACTIVE;
     }
 
     const float minVoltageSizeThing = 0.5f;
@@ -198,12 +244,12 @@ void render() {
         stagePos.x, stagePos.y, // Position
         minVoltageSizeThing * 10, 5 - (curStage.voltage + minVoltageSizeThing) * 5, // Radius, Inner Radius
         0, 359, // Arc start & end 
-        colour, TFT_BLACK, // Colour, AA Colour
+        colour, COLOUR_BG, // Colour, AA Colour
         false // Smoothing
       );
     }
   
-    (i % 2) ? drawHeldPulses(curStage, angle, stagePos) : drawPulsePips(curStage, angle, stagePos);
+    drawPulses(curStage, angle, stagePos, isActive ? sequence.getCurrentPulseInStage() : -1);
   }
 
   // Cursor
@@ -211,18 +257,18 @@ void render() {
     SCREEN_HALF_WIDTH, SCREEN_HALF_HEIGHT, // Position
     SCREEN_HALF_WIDTH + 2, SCREEN_HALF_WIDTH - 5, // Radius, Inner Radius
     fwrap(cursorAngle + 180 - 4, 0, 360), fwrap(cursorAngle + 180 + 4, 0, 360), // Arc start & end 
-    rainbow(cursorAngle * 191 / 360, 0.3f), TFT_BLACK, // Colour, AA Colour
+    COLOUR_ACTIVE, COLOUR_BG, // Colour, AA Colour
     false // Smoothing
   );
   
   if (gpio_get(4)) {
     // BPM
-    screen.setTextColor(TFT_WHITE);
+    screen.setTextColor(COLOUR_INACTIVE);
     screen.drawNumber(sequence.getBpm(), screenCenter.x, screenCenter.y - 6, 2);
     screen.drawString("bpm", screenCenter.x, screenCenter.y + 6, 2);
   } else {
     // FPS
-    screen.setTextColor(TFT_WHITE);
+    screen.setTextColor(COLOUR_INACTIVE);
     screen.drawNumber(fps, screenCenter.x, screenCenter.y - 6, 2);
     screen.drawString("fps", screenCenter.x, screenCenter.y + 6, 2);
   }
