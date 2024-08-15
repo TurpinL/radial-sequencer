@@ -15,7 +15,7 @@ const uint16_t COLOUR_BG =        0x0000;
 const uint16_t COLOUR_BEAT =      0xfc48;
 const uint16_t COLOUR_ACTIVE =    0xf614;
 const uint16_t COLOUR_INACTIVE =  0xaa21;
-const uint16_t COLOUR_DISABLED =  0x5180;
+const uint16_t COLOUR_SKIPPED =  0x5180;
 
 TFT_eSPI tft = TFT_eSPI();
 TFT_eSprite screen = TFT_eSprite(&tft);
@@ -23,13 +23,10 @@ uint16_t* screenPtr;
 
 const Vec2 screenCenter = Vec2(SCREEN_HALF_WIDTH, SCREEN_HEIGHT / 2);
 
-Sequence sequence = Sequence(16);
+Sequence sequence = Sequence(6);
 
 SineCosinePot endlessPot = SineCosinePot(0, 1);
 float cursorAngle = 0;
-float a = 0;
-float b = 0;
-float c = 250;
 
 float lastHighlightedStageIndicatorAngle = 0;
 float highlightedStageIndex = 0;
@@ -73,10 +70,11 @@ void processInput() {
   endlessPot.update();
 
   if (gpio_get(21)) {
-    a += endlessPot.getAngleDelta();
+    sequence.getStage(highlightedStageIndex).isSkipped = !sequence.getStage(highlightedStageIndex).isSkipped;
+    sequence.updateNextStageIndex();
   } else if (gpio_get(22)) {
-    b += endlessPot.getAngleDelta();
-    sequence.getStage(highlightedStageIndex).voltage += endlessPot.getAngleDelta() / 360.f;
+    float newVoltage = sequence.getStage(highlightedStageIndex).voltage + endlessPot.getAngleDelta() / 180.f;
+    sequence.getStage(highlightedStageIndex).voltage = coerceInRange(newVoltage, -1, 1);
   } else if (gpio_get(4)) {
     sequence.setBpm(sequence.getBpm() + endlessPot.getAngleDelta() / 2.f);
   } else {
@@ -105,7 +103,7 @@ void drawPulsePips(Stage& stage, float angle, Vec2 pos, int8_t currentPulseInSta
 
       uint16_t colour;
       if (!stage.isPulseActive(pulseIndex)) {
-        colour = COLOUR_DISABLED;
+        colour = COLOUR_SKIPPED;
       } else if (pulseIndex <= currentPulseInStage) {
         colour = COLOUR_ACTIVE;
       } else {
@@ -152,7 +150,7 @@ void drawHeldPulses(Stage& stage, float angle, Vec2 pos) {
       pos.x, pos.y, // Position
       rowRadius + 2, rowRadius - 1, // Radius, Inner Radius
       startAngle, endAngle, // Arc start & end 
-      COLOUR_INACTIVE, COLOUR_BG, // Colour, AA Colour
+      (stage.isSkipped) ? COLOUR_SKIPPED : COLOUR_INACTIVE, COLOUR_BG, // Colour, AA Colour
       false // Smoothing
     );
 
@@ -182,7 +180,7 @@ void render() {
   screen.fillSprite(COLOUR_BG);
 
   float degreesPerStage = 360 / (float)sequence.stageCount();
-  uint stagePositionRadius = 32 + 4 * sequence.stageCount();
+  uint stagePositionRadius = 48 + 3 * sequence.stageCount();
 
 
   // Update selected stage
@@ -196,7 +194,7 @@ void render() {
   if (true) {
     auto progress = powf(sequence.getPulseAnticipation(), 2);
     auto stage = sequence.indexOfActiveStage();
-    auto nextStage = (stage + 1) % sequence.stageCount();
+    auto nextStage = sequence.getNextStageIndex();
     auto angle = stage * degreesPerStage;
 
     if (sequence.isLastPulseOfStage()) {
@@ -221,8 +219,10 @@ void render() {
     uint16_t colour;
     if (isActive || highlightedStageIndex == i) {
       colour = COLOUR_ACTIVE;
+    } else if (curStage.isSkipped) {
+      colour = COLOUR_SKIPPED; 
     } else {
-      colour = COLOUR_INACTIVE;
+      colour = COLOUR_INACTIVE; 
     }
 
     const float minVoltageSizeThing = 0.5f;
@@ -250,6 +250,14 @@ void render() {
     }
   
     drawPulses(curStage, angle, stagePos, isActive ? sequence.getCurrentPulseInStage() : -1);
+
+    if (curStage.isSkipped) {
+      screen.drawLine(stagePos.x - 11, stagePos.y - 2, stagePos.x + 11, stagePos.y - 2, COLOUR_BG);
+      screen.drawLine(stagePos.x - 11, stagePos.y - 1, stagePos.x + 11, stagePos.y - 1, COLOUR_SKIPPED);
+      screen.drawLine(stagePos.x - 12, stagePos.y, stagePos.x + 12, stagePos.y, COLOUR_SKIPPED);
+      screen.drawLine(stagePos.x - 11, stagePos.y + 1, stagePos.x + 11, stagePos.y + 1, COLOUR_SKIPPED);
+      screen.drawLine(stagePos.x - 11, stagePos.y + 2, stagePos.x + 11, stagePos.y + 2, COLOUR_BG);
+    }
   }
 
   // Cursor

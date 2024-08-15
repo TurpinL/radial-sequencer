@@ -17,8 +17,11 @@ class Stage {
         float voltage = 2;
         uint8_t pulseCount = 4;
         GateMode gateMode = EACH;
+        bool isSkipped = false;
 
         bool isPulseActive(uint8_t index) {
+            if (isSkipped) return false;
+
             if (gateMode == HELD || gateMode == EACH) {
                 return true;
             } else if (gateMode == FIRST && index == 0) {
@@ -59,15 +62,30 @@ class Sequence {
             return _stages.size();
         }
 
+        void updateNextStageIndex() {
+            size_t currentStageIndex = indexOfActiveStage();
+            auto potentialNextIndex = currentStageIndex;
+
+            while (true) {
+                potentialNextIndex++;
+                potentialNextIndex %= _stages.size();
+
+                if (potentialNextIndex == currentStageIndex || !_stages[potentialNextIndex].isSkipped) {
+                    _nextStageIndex = potentialNextIndex;
+                    return;
+                }
+            }
+        }
+
         void update(unsigned long elapsedMicros) {
             if (elapsedMicros - _lastPulseMicros >= _microsPerPulse) {
                 _lastPulseMicros += _microsPerPulse;
 
-                if (isLastPulseOfStage()) {
-                    // Proceed to next stage
+                if (isLastPulseOfStage() || _activeStage->isSkipped) {
+                    _activeStage = &_stages.at(_nextStageIndex);
                     _currentPulseInStage = 0;
-                    size_t nextStageIndex = (indexOfActiveStage() + 1) % _stages.size();
-                    _activeStage = &_stages.at(nextStageIndex);
+
+                    updateNextStageIndex();
                 } else {
                     _currentPulseInStage++;
                 }
@@ -83,6 +101,10 @@ class Sequence {
                     return i;
                 }
             }
+        }
+
+        size_t getNextStageIndex() {
+            return _nextStageIndex;
         }
 
         Stage& getActiveStage() {
@@ -119,6 +141,7 @@ class Sequence {
     private:
         std::vector<Stage> _stages;
         Stage* _activeStage; 
+        size_t _nextStageIndex; 
         float _bpm = 120;
         uint8_t _subdivision = 2;
         unsigned long _microsPerPulse;
