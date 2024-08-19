@@ -1,5 +1,4 @@
-#ifndef RAD_SEQ_VEC2
-#define RAD_SEQ_VEC2
+#pragma once
 
 #include "utils.h"
 
@@ -52,5 +51,3 @@ class Vec2 {
       return Vec2(x, y);
     }
 };
-
-#endif

@@ -1,5 +1,4 @@
-#ifndef RAD_SEQ_SINECOSINE_POT
-#define RAD_SEQ_SINECOSINE_POT
+#pragma once
 
 #include <Arduino.h>
 #include "utils.h"
@@ -62,5 +61,3 @@ class SineCosinePot {
     float _lastHalfAngleA;
     float _lastHalfAngleB;
 };
-
-#endif

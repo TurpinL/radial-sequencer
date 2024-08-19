@@ -5,6 +5,7 @@
 #include "SineCosinePot.h"
 #include "Sequence.h"
 #include "Vec2.h"
+#include "Button.h"
 
 #define SCREEN_WIDTH 240
 #define SCREEN_HALF_WIDTH 120
@@ -27,6 +28,10 @@ Sequence sequence = Sequence(6);
 
 SineCosinePot endlessPot = SineCosinePot(0, 1);
 float cursorAngle = 0;
+
+Button buttonA = Button(21);
+Button buttonB = Button(22);
+Button buttonC = Button(4);
 
 float lastHighlightedStageIndicatorAngle = 0;
 float highlightedStageIndex = 0;
@@ -68,14 +73,17 @@ void loop() {
 
 void processInput() {
   endlessPot.update();
+  buttonA.update();
+  buttonB.update();
+  buttonC.update();
 
-  if (gpio_get(21)) {
+  if (buttonA.fallingEdge()) {
     sequence.getStage(highlightedStageIndex).isSkipped = !sequence.getStage(highlightedStageIndex).isSkipped;
     sequence.updateNextStageIndex();
-  } else if (gpio_get(22)) {
+  } else if (buttonB.held()) {
     float newVoltage = sequence.getStage(highlightedStageIndex).voltage + endlessPot.getAngleDelta() / 180.f;
     sequence.getStage(highlightedStageIndex).voltage = coerceInRange(newVoltage, -1, 1);
-  } else if (gpio_get(4)) {
+  } else if (buttonC.held()) {
     sequence.setBpm(sequence.getBpm() + endlessPot.getAngleDelta() / 2.f);
   } else {
     cursorAngle += endlessPot.getAngleDelta();

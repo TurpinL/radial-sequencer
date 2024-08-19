@@ -1,5 +1,4 @@
-#ifndef RAD_SEQ_SEQUENCE
-#define RAD_SEQ_SEQUENCE
+#pragma once
 
 #define MAX_STAGES 16
 
@@ -156,5 +155,3 @@ class Sequence {
             _microsPerPulse = 60000000 / _bpm / _subdivision;
         }
 };
-
-#endif

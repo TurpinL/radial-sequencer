@@ -1,5 +1,4 @@
-#ifndef RAD_SEQ_COLOUR_UTILS
-#define RAD_SEQ_COLOUR_UTILS
+#pragma once
 
 #include <math.h>
 
@@ -110,5 +109,3 @@ uint16_t rainbow(byte value)
 
   return red << 11 | green << 6 | blue;
 }
-
-#endif
