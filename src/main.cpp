@@ -15,13 +15,13 @@ const uint16_t COLOUR_BG =        0x0000;
 const uint16_t COLOUR_BEAT =      0xfc48;
 const uint16_t COLOUR_ACTIVE =    0xf614;
 const uint16_t COLOUR_INACTIVE =  0xaa21;
-const uint16_t COLOUR_SKIPPED =  0x5180;
+const uint16_t COLOUR_SKIPPED =   0x5180;
 
 TFT_eSPI tft = TFT_eSPI();
 TFT_eSprite screen = TFT_eSprite(&tft);
 uint16_t* screenPtr;
 
-const Vec2 screenCenter = Vec2(SCREEN_HALF_WIDTH, SCREEN_HEIGHT / 2);
+const Vec2 screenCenter = Vec2(SCREEN_HALF_WIDTH, SCREEN_HALF_HEIGHT);
 
 Sequence sequence = Sequence(6);
 
@@ -176,6 +176,50 @@ void drawPulses(Stage& stage, float angle, Vec2 pos, int8_t currentPulseInStage)
   }
 }
 
+void drawStageStrikethrough(Vec2 pos) {
+  Vec2 d = (pos - screenCenter).normalized();
+  Vec2 n = d.normal();
+
+  float halfWidth = 1.25;
+  Vec2 corner1 = pos + d * -32 + n * halfWidth;
+  Vec2 corner2 = pos + d * 16 + n * halfWidth;
+  Vec2 corner3 = pos + d * 16 + n * -halfWidth;
+  Vec2 corner4 = pos + d * -32 + n * -halfWidth;
+
+  Vec2 cornerB1 = pos + d * -33.5 + n * (halfWidth+1.5f);
+  Vec2 cornerB2 = pos + d * 17.5 + n * (halfWidth+1.5f);
+  Vec2 cornerB3 = pos + d * 17.5 + n * -(halfWidth+1.5f);
+  Vec2 cornerB4 = pos + d * -33.5 + n * -(halfWidth+1.5f);
+
+  screen.fillTriangle(
+    cornerB1.x, cornerB1.y,
+    cornerB2.x, cornerB2.y,
+    cornerB4.x, cornerB4.y,
+    COLOUR_BG
+  );
+
+  screen.fillTriangle(
+    cornerB4.x, cornerB4.y,
+    cornerB2.x, cornerB2.y,
+    cornerB3.x, cornerB3.y,
+    COLOUR_BG
+  );
+
+  screen.fillTriangle(
+    corner1.x, corner1.y,
+    corner2.x, corner2.y,
+    corner4.x, corner4.y,
+    COLOUR_SKIPPED
+  );
+
+  screen.fillTriangle(
+    corner4.x, corner4.y,
+    corner2.x, corner2.y,
+    corner3.x, corner3.y,
+    COLOUR_SKIPPED
+  );
+}
+
 void render() {
   screen.fillSprite(COLOUR_BG);
 
@@ -252,11 +296,7 @@ void render() {
     drawPulses(curStage, angle, stagePos, isActive ? sequence.getCurrentPulseInStage() : -1);
 
     if (curStage.isSkipped) {
-      screen.drawLine(stagePos.x - 11, stagePos.y - 2, stagePos.x + 11, stagePos.y - 2, COLOUR_BG);
-      screen.drawLine(stagePos.x - 11, stagePos.y - 1, stagePos.x + 11, stagePos.y - 1, COLOUR_SKIPPED);
-      screen.drawLine(stagePos.x - 12, stagePos.y, stagePos.x + 12, stagePos.y, COLOUR_SKIPPED);
-      screen.drawLine(stagePos.x - 11, stagePos.y + 1, stagePos.x + 11, stagePos.y + 1, COLOUR_SKIPPED);
-      screen.drawLine(stagePos.x - 11, stagePos.y + 2, stagePos.x + 11, stagePos.y + 2, COLOUR_BG);
+      drawStageStrikethrough(stagePos);
     }
   }
 
