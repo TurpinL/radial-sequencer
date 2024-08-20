@@ -92,7 +92,6 @@ void processInput() {
 }
 
 void drawPulsePips(Stage& stage, float angle, Vec2 pos, int8_t currentPulseInStage) {
-  // TODO: Gate Modes
   int rowCount = stage.pulseCount / 4 + (stage.pulseCount % 4 > 0);
   int pxPerPip = 7;
 
@@ -139,7 +138,6 @@ void drawHeldPulses(Stage& stage, float angle, Vec2 pos) {
     progress = 0;
   } 
 
-  // TODO: Gate Modes
   int rowCount = stage.pulseCount / 4 + (stage.pulseCount % 4 > 0);
   int pxPerPip = 7;
 
@@ -234,7 +232,6 @@ void render() {
   float degreesPerStage = 360 / (float)sequence.stageCount();
   uint stagePositionRadius = 48 + 3 * sequence.stageCount();
 
-
   // Update selected stage
   float highlightedStageIndexAngle = highlightedStageIndex * degreesPerStage;
   if (abs(degBetweenAngles(highlightedStageIndexAngle, cursorAngle)) > degreesPerStage * 0.66f) {
@@ -251,6 +248,11 @@ void render() {
 
     if (sequence.isLastPulseOfStage()) {
       auto degToNextStage = degBetweenAngles(angle, nextStage * degreesPerStage);
+
+      if (degToNextStage < 0) {
+        degToNextStage += 360; 
+      }
+
       angle += degToNextStage * powf(progress, 2);
     }
 
@@ -322,12 +324,12 @@ void render() {
     screen.setTextColor(COLOUR_INACTIVE);
     screen.drawNumber(sequence.getBpm(), screenCenter.x, screenCenter.y - 6, 2);
     screen.drawString("bpm", screenCenter.x, screenCenter.y + 6, 2);
-  } else {
-    // FPS
-    screen.setTextColor(COLOUR_INACTIVE);
-    screen.drawNumber(fps, screenCenter.x, screenCenter.y - 6, 2);
-    screen.drawString("fps", screenCenter.x, screenCenter.y + 6, 2);
   }
+
+  // FPS
+  screen.setTextColor(COLOUR_INACTIVE);
+  screen.drawNumber(fps, screenCenter.x, 12, 2);
+  screen.drawString("fps", screenCenter.x, 24, 2);
   
 
   tft.pushImageDMA(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, screenPtr);
