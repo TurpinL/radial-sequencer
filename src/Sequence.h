@@ -17,6 +17,7 @@ class Stage {
         uint8_t pulseCount = 4;
         GateMode gateMode = EACH;
         bool isSkipped = false;
+        bool isSelected = false;
 
         bool isPulseActive(uint8_t index) {
             if (isSkipped) return false;
@@ -116,6 +117,18 @@ class Sequence {
 
         bool isLastPulseOfStage() {
             return _currentPulseInStage >= _activeStage->pulseCount - 1;
+        }
+
+        uint8_t selectedStagesCount() {
+            uint8_t selectedStages = 0;
+
+            for (size_t i = 0; i < _stages.size(); i++) {
+                if (_stages[i].isSelected) {
+                    selectedStages++;
+                }
+            }
+
+            return selectedStages;
         }
 
         uint8_t getCurrentPulseInStage() {

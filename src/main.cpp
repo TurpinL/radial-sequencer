@@ -34,7 +34,8 @@ Button buttonB = Button(22);
 Button buttonC = Button(4);
 
 float lastHighlightedStageIndicatorAngle = 0;
-float highlightedStageIndex = 0;
+uint8_t highlightedStageIndex = 0;
+bool lastSelectToggleState = true;
 
 int32_t lastFrameMillis = 0;
 float fps = 0;
@@ -77,17 +78,64 @@ void processInput() {
   buttonB.update();
   buttonC.update();
 
-  if (buttonA.fallingEdge()) {
-    sequence.getStage(highlightedStageIndex).isSkipped = !sequence.getStage(highlightedStageIndex).isSkipped;
+  uint8_t selectedStagesCount = sequence.selectedStagesCount();
+  bool areAnyStagesSelected = selectedStagesCount > 0;
+
+  // Update highlighted stage
+  float degreesPerStage = 360 / (float)sequence.stageCount();
+  uint8_t lastHighlightedStageIndex = highlightedStageIndex;
+  float highlightedStageIndexAngle = highlightedStageIndex * degreesPerStage;
+  if (abs(degBetweenAngles(highlightedStageIndexAngle, cursorAngle)) > degreesPerStage * 0.66f) {
+    highlightedStageIndex = (int)roundf(cursorAngle / degreesPerStage) % sequence.stageCount();
+    highlightedStageIndexAngle = highlightedStageIndex * degreesPerStage;
+  }
+
+  Stage &highlightedStage = sequence.getStage(highlightedStageIndex);
+
+  if (buttonA.risingEdge()) {
+    if (areAnyStagesSelected) {
+      for (size_t i = 0; i < sequence.stageCount(); i++) {
+        Stage& curStage = sequence.getStage(i);
+        if (curStage.isSelected) {
+          curStage.isSkipped = !curStage.isSkipped;
+        }
+      }
+    } else {
+      highlightedStage.isSkipped = !highlightedStage.isSkipped;
+    }
     sequence.updateNextStageIndex();
   } else if (buttonB.held()) {
-    float newVoltage = sequence.getStage(highlightedStageIndex).voltage + endlessPot.getAngleDelta() / 180.f;
-    sequence.getStage(highlightedStageIndex).voltage = coerceInRange(newVoltage, -1, 1);
-  } else if (buttonC.held()) {
-    sequence.setBpm(sequence.getBpm() + endlessPot.getAngleDelta() / 2.f);
+    if (areAnyStagesSelected) {
+      for (size_t i = 0; i < sequence.stageCount(); i++) {
+        Stage& curStage = sequence.getStage(i);
+        if (curStage.isSelected) {
+          float newVoltage = curStage.voltage + endlessPot.getAngleDelta() / 180.f;
+          curStage.voltage = coerceInRange(newVoltage, -1, 1);
+        }
+      }
+    } else {
+      float newVoltage = highlightedStage.voltage + endlessPot.getAngleDelta() / 180.f;
+      highlightedStage.voltage = coerceInRange(newVoltage, -1, 1);
+    }
+  } else if (buttonC.doubleTapped()) {
+    // Select all or clear selection on double tap
+    bool isHighlightedStageTheOnlySelectedStage = (selectedStagesCount == 1 && highlightedStage.isSelected);
+    bool shouldSelectStages = isHighlightedStageTheOnlySelectedStage || selectedStagesCount == 0;
+
+    for (size_t i = 0; i < sequence.stageCount(); i++) {
+        sequence.getStage(i).isSelected = shouldSelectStages;
+    }
+  } else if (buttonC.risingEdge()) {
+    highlightedStage.isSelected = !highlightedStage.isSelected;
+    lastSelectToggleState = highlightedStage.isSelected;
+    // sequence.setBpm(sequence.getBpm() + endlessPot.getAngleDelta() / 2.f);
   } else {
     cursorAngle += endlessPot.getAngleDelta();
-    cursorAngle = fwrap(cursorAngle, 0, 360);
+    cursorAngle = fwrap(cursorAngle, 0, 360); 
+  }
+
+  if (buttonC.held() && lastHighlightedStageIndex != highlightedStageIndex) {
+    highlightedStage.isSelected = lastSelectToggleState;
   }
 }
 
@@ -232,13 +280,6 @@ void render() {
   float degreesPerStage = 360 / (float)sequence.stageCount();
   uint stagePositionRadius = 48 + 3 * sequence.stageCount();
 
-  // Update selected stage
-  float highlightedStageIndexAngle = highlightedStageIndex * degreesPerStage;
-  if (abs(degBetweenAngles(highlightedStageIndexAngle, cursorAngle)) > degreesPerStage * 0.66f) {
-    highlightedStageIndex = (int)roundf(cursorAngle / degreesPerStage) % sequence.stageCount();
-    highlightedStageIndexAngle = highlightedStageIndex * degreesPerStage;
-  }
-  
   // Beat Indicator
   if (true) {
     auto progress = powf(sequence.getPulseAnticipation(), 2);
@@ -284,13 +325,13 @@ void render() {
     if (curStage.voltage <= -minVoltageSizeThing) {
       screen.drawCircle(
         stagePos.x, stagePos.y, // Position,
-        wrapDeg(-curStage.voltage * 10),
+        -curStage.voltage * 10,
         colour
       );
     } else if (curStage.voltage >= minVoltageSizeThing) {
       screen.fillCircle(
         stagePos.x, stagePos.y, // Position,
-        wrapDeg(curStage.voltage * 10),
+        curStage.voltage * 10,
         colour
       );
     } else {
@@ -308,6 +349,16 @@ void render() {
     if (curStage.isSkipped) {
       drawStageStrikethrough(stagePos);
     }
+
+    if (curStage.isSelected) {
+      Vec2 selectionPipPos = Vec2::fromPolar(stagePositionRadius + 16, angle) + screenCenter;
+
+      screen.fillCircle(
+        selectionPipPos.x, selectionPipPos.y, // Position,
+        2,
+        COLOUR_ACTIVE
+      );
+    }
   }
 
   // Cursor
@@ -319,18 +370,17 @@ void render() {
     false // Smoothing
   );
   
-  if (gpio_get(4)) {
-    // BPM
-    screen.setTextColor(COLOUR_INACTIVE);
-    screen.drawNumber(sequence.getBpm(), screenCenter.x, screenCenter.y - 6, 2);
-    screen.drawString("bpm", screenCenter.x, screenCenter.y + 6, 2);
-  }
+  // if (gpio_get(4)) {
+  //   // BPM
+  //   screen.setTextColor(COLOUR_INACTIVE);
+  //   screen.drawNumber(sequence.getBpm(), screenCenter.x, screenCenter.y - 6, 2);
+  //   screen.drawString("bpm", screenCenter.x, screenCenter.y + 6, 2);
+  // }
 
   // FPS
   screen.setTextColor(COLOUR_INACTIVE);
   screen.drawNumber(fps, screenCenter.x, 12, 2);
   screen.drawString("fps", screenCenter.x, 24, 2);
   
-
   tft.pushImageDMA(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, screenPtr);
 }
