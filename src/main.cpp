@@ -71,13 +71,13 @@ void loop() {
   // Gate LED
   digitalWrite(9, sequence.getGate());
   // Pitch LED
-  Stage &activeStage = sequence.getActiveStage();
-  if (activeStage.voltage > 0) {
-    analogWrite(10, powf(activeStage.voltage, 2) * 255);
+  float output = sequence.getOutput();
+  if (output > 0) {
+    analogWrite(10, powf(output, 2) * 255);
     analogWrite(11, 0);
   } else {
     analogWrite(10, 0);
-    analogWrite(11, powf(activeStage.voltage, 2) * 255);
+    analogWrite(11, powf(output, 2) * 255);
   }
   
 
@@ -114,7 +114,22 @@ void processInput() {
 
   Stage &highlightedStage = sequence.getStage(highlightedStageIndex);
 
-  if (buttonA.risingEdge()) {
+   if (buttonB.held()) { 
+    // Pitch
+    if (areAnyStagesSelected) {
+      for (size_t i = 0; i < sequence.stageCount(); i++) {
+        Stage& curStage = sequence.getStage(i);
+        if (curStage.isSelected) {
+          float newVoltage = curStage.output + endlessPot.getAngleDelta() / 180.f;
+          curStage.output = coerceInRange(newVoltage, -1, 1);
+        }
+      }
+    } else {
+      float newVoltage = highlightedStage.output + endlessPot.getAngleDelta() / 180.f;
+      highlightedStage.output = coerceInRange(newVoltage, -1, 1);
+    }
+  } else if (buttonA.risingEdge()) { 
+    // Skip
     if (areAnyStagesSelected) {
       for (size_t i = 0; i < sequence.stageCount(); i++) {
         Stage& curStage = sequence.getStage(i);
@@ -126,32 +141,38 @@ void processInput() {
       highlightedStage.isSkipped = !highlightedStage.isSkipped;
     }
     sequence.updateNextStageIndex();
-  } else if (buttonB.held()) {
+  } else if (buttonC.risingEdge()) {
+    // Select
+    if (buttonC.doubleTapped()) { 
+      // Select all or clear selection on double tap
+      bool isHighlightedStageTheOnlySelectedStage = (selectedStagesCount == 1 && highlightedStage.isSelected);
+      bool shouldSelectStages = isHighlightedStageTheOnlySelectedStage || selectedStagesCount == 0;
+
+      for (size_t i = 0; i < sequence.stageCount(); i++) {
+          sequence.getStage(i).isSelected = shouldSelectStages;
+      }
+    } else {
+      highlightedStage.isSelected = !highlightedStage.isSelected;
+      lastSelectToggleState = highlightedStage.isSelected;
+    }    
+  } else if (buttonC.held() && buttonD.risingEdge()) {
+    for (size_t i = 0; i < sequence.stageCount(); i++) {
+        sequence.getStage(i).isSelected = sequence.getStage(i).shouldSlideIn;
+    }
+  } else if (buttonD.risingEdge()) {
+    // Slide
     if (areAnyStagesSelected) {
       for (size_t i = 0; i < sequence.stageCount(); i++) {
         Stage& curStage = sequence.getStage(i);
         if (curStage.isSelected) {
-          float newVoltage = curStage.voltage + endlessPot.getAngleDelta() / 180.f;
-          curStage.voltage = coerceInRange(newVoltage, -1, 1);
+          curStage.shouldSlideIn = !curStage.shouldSlideIn;
         }
       }
     } else {
-      float newVoltage = highlightedStage.voltage + endlessPot.getAngleDelta() / 180.f;
-      highlightedStage.voltage = coerceInRange(newVoltage, -1, 1);
+      highlightedStage.shouldSlideIn = !highlightedStage.shouldSlideIn;
     }
-  } else if (buttonC.doubleTapped()) {
-    // Select all or clear selection on double tap
-    bool isHighlightedStageTheOnlySelectedStage = (selectedStagesCount == 1 && highlightedStage.isSelected);
-    bool shouldSelectStages = isHighlightedStageTheOnlySelectedStage || selectedStagesCount == 0;
-
-    for (size_t i = 0; i < sequence.stageCount(); i++) {
-        sequence.getStage(i).isSelected = shouldSelectStages;
-    }
-  } else if (buttonC.risingEdge()) {
-    highlightedStage.isSelected = !highlightedStage.isSelected;
-    lastSelectToggleState = highlightedStage.isSelected;
-    // sequence.setBpm(sequence.getBpm() + endlessPot.getAngleDelta() / 2.f);
   } else {
+    // Cusor
     cursorAngle += endlessPot.getAngleDelta();
     cursorAngle = fwrap(cursorAngle, 0, 360); 
   }
@@ -251,25 +272,25 @@ void drawPulses(Stage& stage, float angle, Vec2 pos, int8_t currentPulseInStage)
   }
 }
 
-void drawStageVoltage(Stage& stage, uint16_t colour, Vec2 pos) {
+void drawStageOutput(float output, uint16_t colour, Vec2 pos) {
   const float minVoltageSizeThing = 0.5f;
 
-  if (stage.voltage <= -minVoltageSizeThing) {
+  if (output <= -minVoltageSizeThing) {
     screen.drawCircle(
       pos.x, pos.y, // Position,
-      -stage.voltage * 10,
+      -output * 10,
       colour
     );
-  } else if (stage.voltage >= minVoltageSizeThing) {
+  } else if (output >= minVoltageSizeThing) {
     screen.fillCircle(
       pos.x, pos.y, // Position,
-      stage.voltage * 10,
+      output * 10,
       colour
     );
   } else {
     screen.drawArc(
       pos.x, pos.y, // Position
-      minVoltageSizeThing * 10, 5 - (stage.voltage + minVoltageSizeThing) * 5, // Radius, Inner Radius
+      minVoltageSizeThing * 10, 5 - (output + minVoltageSizeThing) * 5, // Radius, Inner Radius
       0, 359, // Arc start & end 
       colour, COLOUR_BG, // Colour, AA Colour
       false // Smoothing
@@ -321,6 +342,9 @@ void drawStageStrikethrough(Vec2 pos) {
   );
 }
 
+////////////////////////////////////////////////////
+///                   Render                    ////
+////////////////////////////////////////////////////
 void render() {
   screen.fillSprite(COLOUR_BG);
 
@@ -329,25 +353,36 @@ void render() {
 
   // Beat Indicator
   if (true) {
-    auto progress = powf(sequence.getPulseAnticipation(), 2);
-    auto stage = sequence.indexOfActiveStage();
-    auto nextStage = sequence.getNextStageIndex();
-    auto angle = stage * degreesPerStage;
+    size_t stageIndex = sequence.indexOfActiveStage();
+    size_t nextStageIndex = sequence.getNextStageIndex();
+    Stage &activeStage = sequence.getActiveStage();
+    Stage &nextStage = sequence.getStage(nextStageIndex);
+    float angle = stageIndex * degreesPerStage;
+    float progress = powf(sequence.getPulseAnticipation(), 2);
 
     if (sequence.isLastPulseOfStage()) {
-      auto degToNextStage = degBetweenAngles(angle, nextStage * degreesPerStage);
+      auto degToNextStage = degBetweenAngles(angle, nextStageIndex * degreesPerStage);
 
       if (degToNextStage < 0) {
         degToNextStage += 360; 
       }
 
+      if (nextStage.shouldSlideIn) {
+        degToNextStage -= degreesPerStage * 0.75f;
+      }
+
       angle += degToNextStage * powf(progress, 2);
+    } 
+    
+    if (sequence.isSliding()) {
+      auto degToPrevStage = wrapDeg(degreesPerStage * 0.75f);
+
+      angle -= degToPrevStage * (1 - progress);
     }
 
     auto pos = Vec2::fromPolar(stagePositionRadius, angle) + screenCenter;
     uint32_t radius;
 
-    Stage &activeStage = sequence.getActiveStage();
     if (activeStage.gateMode == HELD) {
       // Held note
       radius = 12 + 4 * powf(1 - progress, 3);
@@ -356,7 +391,7 @@ void render() {
       radius = 2 + 16 * (1 - progress);
     } else {
       // Inactive pulse
-      radius = 4 * (1 - progress);
+      radius = 10 + 2 * (1 - progress);
     }
 
     screen.fillCircle(pos.x, pos.y, radius, COLOUR_BEAT);
@@ -378,14 +413,37 @@ void render() {
     } else {
       colour = COLOUR_INACTIVE; 
     }
+    
+    // Slide indicator
+    if (curStage.shouldSlideIn) {
+      float endAngle = wrapDeg(180 + angle);
+      float degToStartAngle = -degreesPerStage * 0.75f;
+      float startAngle = wrapDeg(endAngle + degToStartAngle);
 
-    drawStageVoltage(curStage, colour, stagePos);
-    drawPulses(curStage, angle, stagePos, isActive ? sequence.getCurrentPulseInStage() : -1);
+      screen.drawArc(
+        screenCenter.x, screenCenter.y, // Position
+        stagePositionRadius + 1, stagePositionRadius - 1, // Radius, Inner Radius
+        startAngle, endAngle, // Arc start & end 
+        COLOUR_SKIPPED, COLOUR_BG, // Colour, AA Colour
+        false // Smoothing
+      );
 
-    if (curStage.isSkipped) {
-      drawStageStrikethrough(stagePos);
+      if (isActive && sequence.isSliding()) {
+        screen.drawArc(
+          screenCenter.x, screenCenter.y, // Position
+          stagePositionRadius + 1, stagePositionRadius - 1, // Radius, Inner Radius
+          startAngle, wrapDeg(startAngle - degToStartAngle * sequence.getPulseAnticipation()), // Arc start & end 
+          COLOUR_ACTIVE, COLOUR_BG, // Colour, AA Colour
+          false // Smoothing
+        );
+      }
     }
 
+    drawStageOutput(curStage.output, colour, stagePos);
+    drawPulses(curStage, angle, stagePos, isActive ? sequence.getCurrentPulseInStage() : -1);
+    if (curStage.isSkipped) { drawStageStrikethrough(stagePos); }
+
+    // Selected indicator
     if (curStage.isSelected) {
       Vec2 selectionPipPos = Vec2::fromPolar(stagePositionRadius + 16, angle) + screenCenter;
 
@@ -419,9 +477,7 @@ void render() {
   screen.drawString("fps", screenCenter.x, 24, 2);
 
   // Gate
-  if (sequence.getGate()) {
-    drawStageVoltage(sequence.getActiveStage(), COLOUR_ACTIVE, screenCenter);
-  }
+  drawStageOutput(sequence.getOutput(), sequence.getGate() ? COLOUR_ACTIVE : COLOUR_SKIPPED, screenCenter);
   
   tft.pushImageDMA(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, screenPtr);
 }
