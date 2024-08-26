@@ -41,8 +41,8 @@ class Sequence {
 
             for (int i = 0; i < stageCount; i++) {
                 addStage();
-                _stages.back().pulseCount = (rand() % 8) + 1;
-                _stages.back().voltage = ((rand() % 100) - 25) / 50.f;
+                _stages.back().pulseCount = (rand() % 4) + 1;
+                _stages.back().voltage = -((rand() % 100) / 50.f) + 1;
                 _stages.back().gateMode = (GateMode)(i % 4);
             }
 
@@ -91,7 +91,15 @@ class Sequence {
                 }
             }
 
-            _gate = elapsedMicros - _lastPulseMicros <= (_microsPerPulse * _gateLength);
+            if (_activeStage->gateMode == HELD) {
+                _gate = true;
+            } else {
+                bool isPulseActive = _activeStage->isPulseActive(_currentPulseInStage);
+                bool hasGateLengthElapsed = elapsedMicros - _lastPulseMicros > (_microsPerPulse * _gateLength);
+
+                _gate = isPulseActive && !hasGateLengthElapsed;
+            }
+
             _pulseAnticipation = (elapsedMicros - _lastPulseMicros) / (float)_microsPerPulse;
         }
 

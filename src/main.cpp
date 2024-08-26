@@ -24,14 +24,17 @@ uint16_t* screenPtr;
 
 const Vec2 screenCenter = Vec2(SCREEN_HALF_WIDTH, SCREEN_HALF_HEIGHT);
 
-Sequence sequence = Sequence(6);
+Sequence sequence = Sequence(8);
 
 SineCosinePot endlessPot = SineCosinePot(0, 1);
 float cursorAngle = 0;
 
-Button buttonA = Button(21);
-Button buttonB = Button(22);
-Button buttonC = Button(4);
+Button buttonA = Button(6);
+Button buttonB = Button(8);
+Button buttonC = Button(7);
+Button buttonD = Button(21);
+Button buttonE = Button(22);
+Button buttonF = Button(4);
 
 float lastHighlightedStageIndicatorAngle = 0;
 uint8_t highlightedStageIndex = 0;
@@ -54,6 +57,9 @@ void setup() {
   screen.setTextDatum(MC_DATUM);
   tft.startWrite(); // TFT chip select held low permanently
 
+  // Gate LED
+  pinMode(9, OUTPUT);
+
   adc_init();
   endlessPot.init();
 }
@@ -61,6 +67,19 @@ void setup() {
 void loop() {
   processInput();
   sequence.update(micros());
+
+  // Gate LED
+  digitalWrite(9, sequence.getGate());
+  // Pitch LED
+  Stage &activeStage = sequence.getActiveStage();
+  if (activeStage.voltage > 0) {
+    analogWrite(10, powf(activeStage.voltage, 2) * 255);
+    analogWrite(11, 0);
+  } else {
+    analogWrite(10, 0);
+    analogWrite(11, powf(activeStage.voltage, 2) * 255);
+  }
+  
 
   if (!tft.dmaBusy()) {
     render();
@@ -77,6 +96,9 @@ void processInput() {
   buttonA.update();
   buttonB.update();
   buttonC.update();
+  buttonD.update();
+  buttonE.update();
+  buttonF.update();
 
   uint8_t selectedStagesCount = sequence.selectedStagesCount();
   bool areAnyStagesSelected = selectedStagesCount > 0;
@@ -230,6 +252,32 @@ void drawPulses(Stage& stage, float angle, Vec2 pos, int8_t currentPulseInStage)
   }
 }
 
+void drawStageVoltage(Stage& stage, uint16_t colour, Vec2 pos) {
+  const float minVoltageSizeThing = 0.5f;
+
+  if (stage.voltage <= -minVoltageSizeThing) {
+    screen.drawCircle(
+      pos.x, pos.y, // Position,
+      -stage.voltage * 10,
+      colour
+    );
+  } else if (stage.voltage >= minVoltageSizeThing) {
+    screen.fillCircle(
+      pos.x, pos.y, // Position,
+      stage.voltage * 10,
+      colour
+    );
+  } else {
+    screen.drawArc(
+      pos.x, pos.y, // Position
+      minVoltageSizeThing * 10, 5 - (stage.voltage + minVoltageSizeThing) * 5, // Radius, Inner Radius
+      0, 359, // Arc start & end 
+      colour, COLOUR_BG, // Colour, AA Colour
+      false // Smoothing
+    );
+  }
+}
+
 void drawStageStrikethrough(Vec2 pos) {
   Vec2 d = (pos - screenCenter).normalized();
   Vec2 n = d.normal();
@@ -298,7 +346,19 @@ void render() {
     }
 
     auto pos = Vec2::fromPolar(stagePositionRadius, angle) + screenCenter;
-    auto radius = 2 + 16 * powf(1 - progress, 3);
+    uint32_t radius;
+
+    Stage &activeStage = sequence.getActiveStage();
+    if (activeStage.gateMode == HELD) {
+      // Held note
+      radius = 12 + 4 * powf(1 - progress, 3);
+    } else if (activeStage.isPulseActive(sequence.getCurrentPulseInStage())) {
+      // Active pulse
+      radius = 2 + 16 * (1 - progress);
+    } else {
+      // Inactive pulse
+      radius = 4 * (1 - progress);
+    }
 
     screen.fillCircle(pos.x, pos.y, radius, COLOUR_BEAT);
   }
@@ -320,30 +380,7 @@ void render() {
       colour = COLOUR_INACTIVE; 
     }
 
-    const float minVoltageSizeThing = 0.5f;
-
-    if (curStage.voltage <= -minVoltageSizeThing) {
-      screen.drawCircle(
-        stagePos.x, stagePos.y, // Position,
-        -curStage.voltage * 10,
-        colour
-      );
-    } else if (curStage.voltage >= minVoltageSizeThing) {
-      screen.fillCircle(
-        stagePos.x, stagePos.y, // Position,
-        curStage.voltage * 10,
-        colour
-      );
-    } else {
-      screen.drawArc(
-        stagePos.x, stagePos.y, // Position
-        minVoltageSizeThing * 10, 5 - (curStage.voltage + minVoltageSizeThing) * 5, // Radius, Inner Radius
-        0, 359, // Arc start & end 
-        colour, COLOUR_BG, // Colour, AA Colour
-        false // Smoothing
-      );
-    }
-  
+    drawStageVoltage(curStage, colour, stagePos);
     drawPulses(curStage, angle, stagePos, isActive ? sequence.getCurrentPulseInStage() : -1);
 
     if (curStage.isSkipped) {
@@ -381,6 +418,11 @@ void render() {
   screen.setTextColor(COLOUR_INACTIVE);
   screen.drawNumber(fps, screenCenter.x, 12, 2);
   screen.drawString("fps", screenCenter.x, 24, 2);
+
+  // Gate
+  if (sequence.getGate()) {
+    drawStageVoltage(sequence.getActiveStage(), COLOUR_ACTIVE, screenCenter);
+  }
   
   tft.pushImageDMA(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, screenPtr);
 }
