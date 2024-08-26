@@ -179,12 +179,11 @@ void drawPulsePips(Stage& stage, float angle, Vec2 pos, int8_t currentPulseInSta
       uint8_t pulseIndex = row * 4 + rowIndex;
 
       uint16_t colour;
-      if (!stage.isPulseActive(pulseIndex)) {
-        colour = COLOUR_SKIPPED;
-      } else if (pulseIndex <= currentPulseInStage) {
-        colour = COLOUR_ACTIVE;
+      bool isPulseActive = stage.isPulseActive(pulseIndex);
+      if (pulseIndex <= currentPulseInStage) {
+        colour = (isPulseActive) ? COLOUR_ACTIVE :  COLOUR_INACTIVE;
       } else {
-        colour = COLOUR_INACTIVE;
+        colour = (isPulseActive) ? COLOUR_INACTIVE :  COLOUR_SKIPPED;
       }
 
       Vec2 pipPos = pos + Vec2::fromPolar(rowRadius, pulseAngle);
