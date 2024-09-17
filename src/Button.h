@@ -1,13 +1,33 @@
 #pragma once
 
 #include <Arduino.h>
+#include <string>
 
 #define DOUBLE_TAP_WINDOW_MS 200
 
+enum Command {
+    PITCH,
+    SKIP,
+    SELECT,
+    SLIDE,
+    NOTHING
+};
+
+String toString(Command command) {
+    switch(command) {
+        case PITCH:   return String("Pitch ");
+        case SKIP:    return String("Skip  ");
+        case SELECT:  return String("Select");
+        case SLIDE:   return String("Slide ");
+        case NOTHING: return String("None  ");
+    }
+}
+
 class Button {
     public:
-        Button(uint gpio) {
+        Button(uint gpio, Command command) {
             _gpio = gpio;
+            _command = command;
         }
 
         void update() {
@@ -52,6 +72,10 @@ class Button {
             return _didDoubleTapWindowPass;
         }
 
+        unsigned long getLastActivation() {
+            return _lastActivation;
+        }
+        Command _command;
     private:
         uint _gpio;
         uint8_t _state;

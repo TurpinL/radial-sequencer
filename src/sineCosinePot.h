@@ -30,8 +30,8 @@ class SineCosinePot {
       uint16_t adcB = adc_read();
 
       // Lowpass filter the results with a lerp
-      float halfAngleFromAdcA = lerp(adcA / 22.7555555556, _lastHalfAngleA, 0.99f);
-      float halfAngleFromAdcB = lerp(adcB / 22.7555555556, _lastHalfAngleB, 0.99f);
+      float halfAngleFromAdcA = lerp(adcA / 22.7555555556, _lastHalfAngleA, 0.98f);
+      float halfAngleFromAdcB = lerp(adcB / 22.7555555556, _lastHalfAngleB, 0.98f);
       _lastHalfAngleA = halfAngleFromAdcA;
       _lastHalfAngleB = halfAngleFromAdcB;
 

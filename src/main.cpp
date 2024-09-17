@@ -6,6 +6,8 @@
 #include "Sequence.h"
 #include "Vec2.h"
 #include "Button.h"
+#include <set>
+#include <algorithm>
 
 #define SCREEN_WIDTH 240
 #define SCREEN_HALF_WIDTH 120
@@ -29,12 +31,14 @@ Sequence sequence = Sequence(8);
 SineCosinePot endlessPot = SineCosinePot(0, 1);
 float cursorAngle = 0;
 
-Button buttonA = Button(6);
-Button buttonB = Button(8);
-Button buttonC = Button(7);
-Button buttonD = Button(21);
-Button buttonE = Button(22);
-Button buttonF = Button(4);
+Button buttonA = Button(6, SKIP);
+Button buttonB = Button(8, PITCH);
+Button buttonC = Button(7, SELECT);
+Button buttonD = Button(21, SLIDE);
+Button buttonE = Button(22, NOTHING);
+Button buttonF = Button(4, NOTHING);
+std::vector<Button*> buttons =        {&buttonA, &buttonB, &buttonC, &buttonD, &buttonE, &buttonF};
+std::vector<Button*> heldButtons;
 
 float lastHighlightedStageIndicatorAngle = 0;
 uint8_t highlightedStageIndex = 0;
@@ -93,15 +97,6 @@ void loop() {
 
 void processInput() {
   endlessPot.update();
-  buttonA.update();
-  buttonB.update();
-  buttonC.update();
-  buttonD.update();
-  buttonE.update();
-  buttonF.update();
-
-  uint8_t selectedStagesCount = sequence.selectedStagesCount();
-  bool areAnyStagesSelected = selectedStagesCount > 0;
 
   // Update highlighted stage
   float degreesPerStage = 360 / (float)sequence.stageCount();
@@ -113,9 +108,43 @@ void processInput() {
   }
 
   Stage &highlightedStage = sequence.getStage(highlightedStageIndex);
+  
+  // Update buttons
+  for (auto button : buttons) {
+    button->update();
 
-   if (buttonB.held()) { 
-    // Pitch
+    heldButtons.clear();
+    
+    // Add all held buttons to the list
+    for (Button *x: buttons) {
+      if ( x->held() ) { 
+        heldButtons.push_back(x);
+      }
+    }
+
+    // Sort them by timestamp
+    std::sort(heldButtons.begin(), heldButtons.end(), 
+      [](Button *a, Button *b) { 
+        return a->getLastActivation() < b->getLastActivation(); 
+      }
+    );
+  }
+
+  Button *baseButton = heldButtons.size() > 0 ? heldButtons[0] : nullptr;
+  Command baseCommand = baseButton != nullptr ? baseButton->_command : NOTHING;
+
+  Button *modifierButton = heldButtons.size() > 1 ? heldButtons[1] : nullptr;
+  Command modifier = modifierButton != nullptr ? modifierButton->_command : NOTHING;
+
+  bool isShiftHeld = false;
+
+  uint8_t selectedStagesCount = sequence.selectedStagesCount();
+  bool areAnyStagesSelected = selectedStagesCount > 0;
+  bool shouldSupressCursorRotation = false;
+
+  if (baseCommand == PITCH) {
+    shouldSupressCursorRotation = true;
+
     if (areAnyStagesSelected) {
       for (size_t i = 0; i < sequence.stageCount(); i++) {
         Stage& curStage = sequence.getStage(i);
@@ -128,57 +157,66 @@ void processInput() {
       float newVoltage = highlightedStage.output + endlessPot.getAngleDelta() / 180.f;
       highlightedStage.output = coerceInRange(newVoltage, -1, 1);
     }
-  } else if (buttonA.risingEdge()) { 
-    // Skip
-    if (areAnyStagesSelected) {
-      for (size_t i = 0; i < sequence.stageCount(); i++) {
-        Stage& curStage = sequence.getStage(i);
-        if (curStage.isSelected) {
-          curStage.isSkipped = !curStage.isSkipped;
+  } else if (baseCommand == SKIP) {
+    if (baseButton->risingEdge()) {
+      if (areAnyStagesSelected) {
+        for (size_t i = 0; i < sequence.stageCount(); i++) {
+          Stage& curStage = sequence.getStage(i);
+          if (curStage.isSelected) {
+            curStage.isSkipped = !curStage.isSkipped;
+          }
         }
+      } else {
+        highlightedStage.isSkipped = !highlightedStage.isSkipped;
       }
-    } else {
-      highlightedStage.isSkipped = !highlightedStage.isSkipped;
+      sequence.updateNextStageIndex();
     }
-    sequence.updateNextStageIndex();
-  } else if (buttonC.risingEdge()) {
-    // Select
-    if (buttonC.doubleTapped()) { 
-      // Select all or clear selection on double tap
-      bool isHighlightedStageTheOnlySelectedStage = (selectedStagesCount == 1 && highlightedStage.isSelected);
-      bool shouldSelectStages = isHighlightedStageTheOnlySelectedStage || selectedStagesCount == 0;
+  } else if (baseCommand == SELECT) {
+    if (modifier == NOTHING) {
+      if (baseButton->risingEdge()) {
+        if (baseButton->doubleTapped()) { 
+          // Select all or clear selection on double tap
+          bool isHighlightedStageTheOnlySelectedStage = (selectedStagesCount == 1 && highlightedStage.isSelected);
+          bool shouldSelectStages = isHighlightedStageTheOnlySelectedStage || selectedStagesCount == 0;
 
-      for (size_t i = 0; i < sequence.stageCount(); i++) {
-          sequence.getStage(i).isSelected = shouldSelectStages;
-      }
-    } else {
-      highlightedStage.isSelected = !highlightedStage.isSelected;
-      lastSelectToggleState = highlightedStage.isSelected;
-    }    
-  } else if (buttonC.held() && buttonD.risingEdge()) {
-    for (size_t i = 0; i < sequence.stageCount(); i++) {
-        sequence.getStage(i).isSelected = sequence.getStage(i).shouldSlideIn;
-    }
-  } else if (buttonD.risingEdge()) {
-    // Slide
-    if (areAnyStagesSelected) {
-      for (size_t i = 0; i < sequence.stageCount(); i++) {
-        Stage& curStage = sequence.getStage(i);
-        if (curStage.isSelected) {
-          curStage.shouldSlideIn = !curStage.shouldSlideIn;
+          for (size_t i = 0; i < sequence.stageCount(); i++) {
+              sequence.getStage(i).isSelected = shouldSelectStages;
+          }
+        } else {
+          highlightedStage.isSelected = !highlightedStage.isSelected;
+          lastSelectToggleState = highlightedStage.isSelected;
         }
       }
-    } else {
-      highlightedStage.shouldSlideIn = !highlightedStage.shouldSlideIn;
+
+      if (lastHighlightedStageIndex != highlightedStageIndex) {
+        highlightedStage.isSelected = lastSelectToggleState;
+      }
+    } else if (modifier == SLIDE) {
+      if (modifierButton->risingEdge()) {
+        for (size_t i = 0; i < sequence.stageCount(); i++) {
+          sequence.getStage(i).isSelected = sequence.getStage(i).shouldSlideIn;
+        }
+      }
     }
-  } else {
+  } else if (baseCommand == SLIDE) {
+    if (baseButton->risingEdge()) {
+      if (areAnyStagesSelected) {
+        for (size_t i = 0; i < sequence.stageCount(); i++) {
+          Stage& curStage = sequence.getStage(i);
+          if (curStage.isSelected) {
+            curStage.shouldSlideIn = !curStage.shouldSlideIn;
+          }
+        }
+      } else {
+        highlightedStage.shouldSlideIn = !highlightedStage.shouldSlideIn;
+      }
+    }
+  }
+
+  if (!shouldSupressCursorRotation) {
     // Cusor
     cursorAngle += endlessPot.getAngleDelta();
     cursorAngle = fwrap(cursorAngle, 0, 360); 
-  }
-
-  if (buttonC.held() && lastHighlightedStageIndex != highlightedStageIndex) {
-    highlightedStage.isSelected = lastSelectToggleState;
   }
 }
 
@@ -475,6 +513,14 @@ void render() {
   screen.setTextColor(COLOUR_INACTIVE);
   screen.drawNumber(fps, screenCenter.x, 12, 2);
   screen.drawString("fps", screenCenter.x, 24, 2);
+
+  // Debug
+  for (int i = 0; i < heldButtons.size(); i++) {
+    Vec2 pos = Vec2::fromPolar(SCREEN_HALF_WIDTH - 25, 290 - i * 10) + screenCenter;
+
+    screen.setTextColor(COLOUR_INACTIVE);
+    screen.drawString(toString(heldButtons[i]->_command), pos.x, pos.y, 2);
+  }
 
   // Gate
   drawStageOutput(sequence.getOutput(), sequence.getGate() ? COLOUR_ACTIVE : COLOUR_SKIPPED, screenCenter);
