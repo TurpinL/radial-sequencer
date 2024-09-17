@@ -7,6 +7,8 @@
 
 enum Command {
     PITCH,
+    PULSES,
+    GATEMODE,
     SKIP,
     SELECT,
     SLIDE,
@@ -15,11 +17,13 @@ enum Command {
 
 String toString(Command command) {
     switch(command) {
-        case PITCH:   return String("Pitch ");
-        case SKIP:    return String("Skip  ");
-        case SELECT:  return String("Select");
-        case SLIDE:   return String("Slide ");
-        case NOTHING: return String("None  ");
+        case PITCH:    return String("Pitch ");
+        case SKIP:     return String("Skip  ");
+        case SELECT:   return String("Select");
+        case SLIDE:    return String("Slide ");
+        case PULSES:   return String("Pulses");
+        case GATEMODE: return String("Mode  ");
+        case NOTHING:  return String("None  ");
     }
 }
 

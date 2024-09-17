@@ -35,8 +35,8 @@ Button buttonA = Button(6, SKIP);
 Button buttonB = Button(8, PITCH);
 Button buttonC = Button(7, SELECT);
 Button buttonD = Button(21, SLIDE);
-Button buttonE = Button(22, NOTHING);
-Button buttonF = Button(4, NOTHING);
+Button buttonE = Button(22, PULSES);
+Button buttonF = Button(4, GATEMODE);
 std::vector<Button*> buttons =        {&buttonA, &buttonB, &buttonC, &buttonD, &buttonE, &buttonF};
 std::vector<Button*> heldButtons;
 
@@ -95,21 +95,7 @@ void loop() {
   }
 }
 
-void processInput() {
-  endlessPot.update();
-
-  // Update highlighted stage
-  float degreesPerStage = 360 / (float)sequence.stageCount();
-  uint8_t lastHighlightedStageIndex = highlightedStageIndex;
-  float highlightedStageIndexAngle = highlightedStageIndex * degreesPerStage;
-  if (abs(degBetweenAngles(highlightedStageIndexAngle, cursorAngle)) > degreesPerStage * 0.66f) {
-    highlightedStageIndex = (int)roundf(cursorAngle / degreesPerStage) % sequence.stageCount();
-    highlightedStageIndexAngle = highlightedStageIndex * degreesPerStage;
-  }
-
-  Stage &highlightedStage = sequence.getStage(highlightedStageIndex);
-  
-  // Update buttons
+void updateButtons() {
   for (auto button : buttons) {
     button->update();
 
@@ -129,7 +115,27 @@ void processInput() {
       }
     );
   }
+}
 
+void processInput() {
+  endlessPot.update();
+  updateButtons();
+
+  // Hidden value used for... things?
+  static float hiddenValue = 0;
+  bool shouldResetHiddenValue = true;
+
+  // Update highlighted stage
+  float degreesPerStage = 360 / (float)sequence.stageCount();
+  uint8_t lastHighlightedStageIndex = highlightedStageIndex;
+  float highlightedStageIndexAngle = highlightedStageIndex * degreesPerStage;
+  // Hysteresis
+  if (abs(degBetweenAngles(highlightedStageIndexAngle, cursorAngle)) > degreesPerStage * 0.66f) {
+    highlightedStageIndex = (int)roundf(cursorAngle / degreesPerStage) % sequence.stageCount();
+    highlightedStageIndexAngle = highlightedStageIndex * degreesPerStage;
+  }
+  Stage &highlightedStage = sequence.getStage(highlightedStageIndex);
+  
   Button *baseButton = heldButtons.size() > 0 ? heldButtons[0] : nullptr;
   Command baseCommand = baseButton != nullptr ? baseButton->_command : NOTHING;
 
@@ -138,60 +144,81 @@ void processInput() {
 
   bool isShiftHeld = false;
 
-  uint8_t selectedStagesCount = sequence.selectedStagesCount();
-  bool areAnyStagesSelected = selectedStagesCount > 0;
   bool shouldSupressCursorRotation = false;
+
+  std::vector<Stage*> selectedStages = sequence.getSelectedStages();
+  std::vector<Stage*> affectedStages = selectedStages;
+  if (selectedStages.size() == 0) {
+    // If there are no selected stages, affect the highlighted stage instead
+    affectedStages.push_back(&highlightedStage);
+  }
 
   if (baseCommand == PITCH) {
     shouldSupressCursorRotation = true;
 
-    if (areAnyStagesSelected) {
-      for (size_t i = 0; i < sequence.stageCount(); i++) {
-        Stage& curStage = sequence.getStage(i);
-        if (curStage.isSelected) {
-          float newVoltage = curStage.output + endlessPot.getAngleDelta() / 180.f;
-          curStage.output = coerceInRange(newVoltage, -1, 1);
-        }
-      }
-    } else {
-      float newVoltage = highlightedStage.output + endlessPot.getAngleDelta() / 180.f;
-      highlightedStage.output = coerceInRange(newVoltage, -1, 1);
+    for (auto stage : affectedStages) {
+      float newVoltage = stage->output + endlessPot.getAngleDelta() / 180.f;
+      stage->output = coerceInRange(newVoltage, -1, 1);
     }
   } else if (baseCommand == SKIP) {
     if (baseButton->risingEdge()) {
-      if (areAnyStagesSelected) {
-        for (size_t i = 0; i < sequence.stageCount(); i++) {
-          Stage& curStage = sequence.getStage(i);
-          if (curStage.isSelected) {
-            curStage.isSkipped = !curStage.isSkipped;
-          }
-        }
-      } else {
-        highlightedStage.isSkipped = !highlightedStage.isSkipped;
+      // Toggle isSkipped
+      for (auto stage : affectedStages) {
+        stage->isSkipped = !stage->isSkipped;
       }
+  
       sequence.updateNextStageIndex();
+    }
+  } else if (baseCommand == PULSES) {
+    shouldSupressCursorRotation = true;
+    shouldResetHiddenValue = false;
+
+    hiddenValue += endlessPot.getAngleDelta();
+
+    if (abs(hiddenValue) > 20) {
+      for (auto stage : affectedStages) {
+        stage->pulseCount = coerceInRange(stage->pulseCount + (hiddenValue > 0 ? 1 : -1), 1, 8);
+      }
+
+      hiddenValue = 0;
+    }
+  } else if (baseCommand == GATEMODE) {
+    shouldSupressCursorRotation = true;
+    shouldResetHiddenValue = false;
+
+    hiddenValue += endlessPot.getAngleDelta();
+
+    if (abs(hiddenValue) > 20) {
+      for (auto stage : affectedStages) {
+        stage->gateMode = (GateMode)((stage->gateMode + (hiddenValue > 0 ? 1 : -1)) % 4);
+      }
+
+      hiddenValue = 0;
     }
   } else if (baseCommand == SELECT) {
     if (modifier == NOTHING) {
       if (baseButton->risingEdge()) {
         if (baseButton->doubleTapped()) { 
           // Select all or clear selection on double tap
-          bool isHighlightedStageTheOnlySelectedStage = (selectedStagesCount == 1 && highlightedStage.isSelected);
-          bool shouldSelectStages = isHighlightedStageTheOnlySelectedStage || selectedStagesCount == 0;
+          bool isHighlightedStageTheOnlySelectedStage = (selectedStages.size() == 1 && highlightedStage.isSelected);
+          bool shouldSelectStages = selectedStages.size() == 0 || isHighlightedStageTheOnlySelectedStage;
 
           for (size_t i = 0; i < sequence.stageCount(); i++) {
               sequence.getStage(i).isSelected = shouldSelectStages;
           }
         } else {
+          // Toggle selection on highlit stage
           highlightedStage.isSelected = !highlightedStage.isSelected;
           lastSelectToggleState = highlightedStage.isSelected;
         }
       }
 
+      // Select multiple stages as you turn the knob
       if (lastHighlightedStageIndex != highlightedStageIndex) {
         highlightedStage.isSelected = lastSelectToggleState;
       }
     } else if (modifier == SLIDE) {
+      // Select every stage with slide toggled on
       if (modifierButton->risingEdge()) {
         for (size_t i = 0; i < sequence.stageCount(); i++) {
           sequence.getStage(i).isSelected = sequence.getStage(i).shouldSlideIn;
@@ -200,15 +227,9 @@ void processInput() {
     }
   } else if (baseCommand == SLIDE) {
     if (baseButton->risingEdge()) {
-      if (areAnyStagesSelected) {
-        for (size_t i = 0; i < sequence.stageCount(); i++) {
-          Stage& curStage = sequence.getStage(i);
-          if (curStage.isSelected) {
-            curStage.shouldSlideIn = !curStage.shouldSlideIn;
-          }
-        }
-      } else {
-        highlightedStage.shouldSlideIn = !highlightedStage.shouldSlideIn;
+      // Toggle shouldSlideIn
+      for (auto stage : affectedStages) {
+        stage->shouldSlideIn = !stage->shouldSlideIn;
       }
     }
   }
@@ -217,6 +238,10 @@ void processInput() {
     // Cusor
     cursorAngle += endlessPot.getAngleDelta();
     cursorAngle = fwrap(cursorAngle, 0, 360); 
+  }
+
+  if (shouldResetHiddenValue) {
+    hiddenValue = 0;
   }
 }
 

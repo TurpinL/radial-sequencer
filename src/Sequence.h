@@ -158,6 +158,18 @@ class Sequence {
             return selectedStages;
         }
 
+        std::vector<Stage*> getSelectedStages() {
+            std::vector<Stage*> selectedStages;
+
+            for (auto& stage : _stages) {
+                if (stage.isSelected) {
+                    selectedStages.push_back(&stage);
+                }
+            }
+
+            return selectedStages;
+        }
+
         uint8_t getCurrentPulseInStage() {
             return _currentPulseInStage;
         }
