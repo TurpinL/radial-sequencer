@@ -31,8 +31,8 @@ Sequence sequence = Sequence(8);
 SineCosinePot endlessPot = SineCosinePot(0, 1);
 float cursorAngle = 0;
 
-Button buttonA = Button(6, SKIP);
-Button buttonB = Button(8, PITCH);
+Button buttonA = Button(6, CLONE);
+Button buttonB = Button(8, DELETE);
 Button buttonC = Button(7, SELECT);
 Button buttonD = Button(21, SLIDE);
 Button buttonE = Button(22, PULSES);
@@ -128,12 +128,7 @@ void processInput() {
   // Update highlighted stage
   float degreesPerStage = 360 / (float)sequence.stageCount();
   uint8_t lastHighlightedStageIndex = highlightedStageIndex;
-  float highlightedStageIndexAngle = highlightedStageIndex * degreesPerStage;
-  // Hysteresis
-  if (abs(degBetweenAngles(highlightedStageIndexAngle, cursorAngle)) > degreesPerStage * 0.66f) {
-    highlightedStageIndex = (int)roundf(cursorAngle / degreesPerStage) % sequence.stageCount();
-    highlightedStageIndexAngle = highlightedStageIndex * degreesPerStage;
-  }
+  highlightedStageIndex = (int)roundf(cursorAngle / degreesPerStage) % sequence.stageCount();
   Stage &highlightedStage = sequence.getStage(highlightedStageIndex);
   
   Button *baseButton = heldButtons.size() > 0 ? heldButtons[0] : nullptr;
@@ -230,6 +225,35 @@ void processInput() {
       // Toggle shouldSlideIn
       for (auto stage : affectedStages) {
         stage->shouldSlideIn = !stage->shouldSlideIn;
+      }
+    }
+  } else if (baseCommand == CLONE) {
+    if (baseButton->risingEdge()) {
+      // Iterate from the end to the beginning because deleting 
+      // stages moves around the data in the stages vector causing 
+      // the pointers in affected stages to point to the wrong stage. 
+      // Iterating in reverse is a workaround to that issue
+      auto rit = affectedStages.rbegin();
+      while (rit != affectedStages.rend()) {
+        // Copy everything about the stage, except deselect it
+        Stage newStage = **rit;
+        newStage.isSelected = false;
+
+        sequence.insertStage(sequence.indexOfStage(*rit) + 1, newStage);
+        
+        ++rit;
+      }
+    }
+  } else if (baseCommand == DELETE) {
+    if (baseButton->risingEdge()) {
+      // Iterate from the end to the beginning because deleting 
+      // stages moves around the data in the stages vector causing 
+      // the pointers in affected stages to point to the wrong stage. 
+      // Iterating in reverse is a workaround to that issue
+      auto rit = affectedStages.rbegin();
+      while (rit != affectedStages.rend()) {
+        sequence.deleteStage(sequence.indexOfStage(*rit));
+        ++rit;
       }
     }
   }

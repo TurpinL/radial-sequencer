@@ -36,6 +36,8 @@ class Stage {
 class Sequence {
     public:
         Sequence(u_int8_t stageCount) {
+            _stages.reserve(MAX_STAGES);
+
             // Clip stageCount to a reasonable range
             stageCount = max(1, stageCount);
             stageCount = min(MAX_STAGES, stageCount);
@@ -48,13 +50,48 @@ class Sequence {
                 _stages.back().shouldSlideIn = i % 5 == 4;
             }
 
-            _activeStage = &_stages.front();
             _updateMicrosPerPulse();
             updateNextStageIndex();
         }
 
         void addStage() {
             _stages.push_back(Stage());
+        }
+
+        void insertStage(size_t index, Stage stage) {
+            if (stageCount() <= MAX_STAGES) {
+                _stages.insert(_stages.begin() + index, stage);
+
+                // Update the active stage index if the new stage is inserted before it
+                if (index < _activeStageIndex) {
+                    _activeStageIndex++;
+                }
+
+                updateNextStageIndex();
+            }
+        }
+
+        void deleteStage(size_t index) {
+            if (_stages.size() > 1 && index >= 0 && index < _stages.size()) {
+                _stages.erase(_stages.begin() + index);
+
+                // Move the active stage index back if the deletion is before said index
+                if (index < _activeStageIndex) {
+                    _activeStageIndex--;
+                }
+
+                updateNextStageIndex();
+            }
+        }
+
+        size_t indexOfStage(Stage* stage) {
+            for (size_t i = 0; i < _stages.size(); i++) {
+                if (stage == &_stages.at(i)) {
+                    return i;
+                }
+            }
+
+            return -1;
         }
 
         Stage& getStage(size_t index) {
@@ -81,12 +118,14 @@ class Sequence {
         }
 
         void update(unsigned long elapsedMicros) {
+            Stage &activeStage = getActiveStage();
+
             if (elapsedMicros - _lastPulseMicros >= _microsPerPulse) {
                 _lastPulseMicros += _microsPerPulse;
 
-                if (isLastPulseOfStage() || _activeStage->isSkipped) {
+                if (isLastPulseOfStage() || activeStage.isSkipped) {
                     _outputOfLastStage = _output;
-                    _activeStage = &_stages.at(_nextStageIndex);
+                    _activeStageIndex = _nextStageIndex;
                     _currentPulseInStage = 0;
 
                     updateNextStageIndex();
@@ -95,10 +134,10 @@ class Sequence {
                 }
             }
 
-            if (_activeStage->gateMode == HELD) {
+            if (activeStage.gateMode == HELD) {
                 _gate = true;
             } else {
-                bool isPulseActive = _activeStage->isPulseActive(_currentPulseInStage);
+                bool isPulseActive = activeStage.isPulseActive(_currentPulseInStage);
                 bool hasGateLengthElapsed = elapsedMicros - _lastPulseMicros > (_microsPerPulse * _gateLength);
 
                 _gate = isPulseActive && !hasGateLengthElapsed;
@@ -108,18 +147,14 @@ class Sequence {
             _slideProgress = min(_pulseAnticipation, _gateLength) / _gateLength;
 
             if (isSliding()) {
-                _output = lerp(_outputOfLastStage, _activeStage->output, _slideProgress);
+                _output = lerp(_outputOfLastStage, activeStage.output, _slideProgress);
             } else {
-                _output = _activeStage->output;
+                _output = activeStage.output;
             }
         }
 
         size_t indexOfActiveStage() {
-            for (size_t i = 0; i < _stages.size(); i++) {
-                if (_activeStage == &_stages.at(i)) {
-                    return i;
-                }
-            }
+            return _activeStageIndex;
         }
 
         size_t getNextStageIndex() {
@@ -127,7 +162,7 @@ class Sequence {
         }
 
         Stage& getActiveStage() {
-            return *_activeStage;
+            return _stages[_activeStageIndex];
         }
 
         float getPulseAnticipation() {
@@ -135,11 +170,11 @@ class Sequence {
         }
 
         bool isLastPulseOfStage() {
-            return _currentPulseInStage >= _activeStage->pulseCount - 1;
+            return _currentPulseInStage >= getActiveStage().pulseCount - 1;
         }
 
         bool isSliding() {
-            return _activeStage->shouldSlideIn && _currentPulseInStage == 0;
+            return getActiveStage().shouldSlideIn && _currentPulseInStage == 0;
         }
 
         float getSlideProgress() {
@@ -158,9 +193,12 @@ class Sequence {
             return selectedStages;
         }
 
+        // Returns a vector of selected stages in index order
         std::vector<Stage*> getSelectedStages() {
             std::vector<Stage*> selectedStages;
 
+            // Note: Stage deletion and insertion depend on this
+            // being in index order
             for (auto& stage : _stages) {
                 if (stage.isSelected) {
                     selectedStages.push_back(&stage);
@@ -196,8 +234,8 @@ class Sequence {
         }
     private:
         std::vector<Stage> _stages;
-        Stage* _activeStage; 
-        size_t _nextStageIndex;
+        size_t _activeStageIndex;
+        size_t _nextStageIndex = 0;
         float _output;
         float _outputOfLastStage;
         float _bpm = 120;
