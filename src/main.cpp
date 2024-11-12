@@ -15,8 +15,9 @@
 #define SCREEN_HALF_HEIGHT 120
 
 const uint16_t COLOUR_BG =        0x0000;
-const uint16_t COLOUR_BEAT =      0xfc48;
-const uint16_t COLOUR_ACTIVE =    0xf614;
+const uint16_t COLOUR_BEAT =      0x8224;
+const uint16_t COLOUR_USER =      0x96cd;
+const uint16_t COLOUR_ACTIVE =    0xfd4f;
 const uint16_t COLOUR_INACTIVE =  0xaa21;
 const uint16_t COLOUR_SKIPPED =   0x5180;
 
@@ -493,8 +494,10 @@ void render() {
     Stage& curStage = sequence.getStage(i);
 
     uint16_t colour;
-    if (isActive || highlightedStageIndex == i) {
-      colour = COLOUR_ACTIVE;
+    if (highlightedStageIndex == i) {
+      colour = COLOUR_USER;
+    } else if (isActive) {
+      colour = COLOUR_ACTIVE; 
     } else if (curStage.isSkipped) {
       colour = COLOUR_SKIPPED; 
     } else {
@@ -537,7 +540,7 @@ void render() {
       screen.fillCircle(
         selectionPipPos.x, selectionPipPos.y, // Position,
         2,
-        COLOUR_ACTIVE
+        COLOUR_USER
       );
     }
   }
@@ -547,7 +550,7 @@ void render() {
     SCREEN_HALF_WIDTH, SCREEN_HALF_HEIGHT, // Position
     SCREEN_HALF_WIDTH + 2, SCREEN_HALF_WIDTH - 5, // Radius, Inner Radius
     fwrap(cursorAngle + 180 - 4, 0, 360), fwrap(cursorAngle + 180 + 4, 0, 360), // Arc start & end 
-    COLOUR_ACTIVE, COLOUR_BG, // Colour, AA Colour
+    COLOUR_USER, COLOUR_BG, // Colour, AA Colour
     false // Smoothing
   );
   
