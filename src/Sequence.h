@@ -20,6 +20,10 @@ class Stage {
         bool isSelected = false;
         bool shouldSlideIn = false;
 
+        // Render stuff
+        float radius = 0;
+        float angle = 0;
+
         bool isPulseActive(uint8_t index) {
             if (isSkipped) return false;
 

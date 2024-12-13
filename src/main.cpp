@@ -144,8 +144,9 @@ void processInput() {
 
   std::vector<Stage*> selectedStages = sequence.getSelectedStages();
   std::vector<Stage*> affectedStages = selectedStages;
-  if (selectedStages.size() == 0) {
-    // If there are no selected stages, affect the highlighted stage instead
+
+  if (!highlightedStage.isSelected) {
+    // Also affect the highlighted stage
     affectedStages.push_back(&highlightedStage);
   }
 
@@ -436,39 +437,30 @@ void drawStageStrikethrough(Vec2 pos) {
 void render() {
   screen.fillSprite(COLOUR_BG);
 
-  float degreesPerStage = 360 / (float)sequence.stageCount();
-  uint stagePositionRadius = 48 + 3 * sequence.stageCount();
+  float targetDegreesPerStage = 360 / (float)sequence.stageCount();
+  uint defaultStagePositionRadius = 48 + 3 * sequence.stageCount();
 
   // Beat Indicator
   if (true) {
-    size_t stageIndex = sequence.indexOfActiveStage();
     size_t nextStageIndex = sequence.getNextStageIndex();
     Stage &activeStage = sequence.getActiveStage();
     Stage &nextStage = sequence.getStage(nextStageIndex);
-    float angle = stageIndex * degreesPerStage;
+    float angle = activeStage.angle;
+    float polarRadius = activeStage.radius;
     float progress = powf(sequence.getPulseAnticipation(), 2);
 
     if (sequence.isLastPulseOfStage()) {
-      auto degToNextStage = degBetweenAngles(angle, nextStageIndex * degreesPerStage);
+      auto degToNextStage = degBetweenAngles(angle, nextStage.angle);
 
       if (degToNextStage < 0) {
         degToNextStage += 360; 
       }
 
-      if (nextStage.shouldSlideIn) {
-        degToNextStage -= degreesPerStage * 0.75f;
-      }
-
       angle += degToNextStage * powf(progress, 2);
+      polarRadius = lerp(activeStage.radius, nextStage.radius, powf(progress, 2));
     } 
     
-    if (sequence.isSliding()) {
-      auto degToPrevStage = wrapDeg(degreesPerStage * 0.75f);
-
-      angle -= degToPrevStage * (1 - progress);
-    }
-
-    auto pos = Vec2::fromPolar(stagePositionRadius, angle) + screenCenter;
+    auto pos = Vec2::fromPolar(polarRadius, angle) + screenCenter;
     uint32_t radius;
 
     if (activeStage.gateMode == HELD) {
@@ -487,14 +479,22 @@ void render() {
 
   // Stages
   for (size_t i = 0; i < sequence.stageCount(); i++) {
-    bool isActive = sequence.indexOfActiveStage() == i;
-    float angle = i * degreesPerStage;
-    Vec2 stagePos = Vec2::fromPolar(stagePositionRadius, angle) + screenCenter;
-  
     Stage& curStage = sequence.getStage(i);
 
+    bool isActive = sequence.indexOfActiveStage() == i;
+    bool isHighlighted = highlightedStageIndex == i || curStage.isSelected;
+
+    // Update position
+    float targetRadius = defaultStagePositionRadius + (isHighlighted ? 8 : 0);
+    float targetAngle = i * targetDegreesPerStage;
+
+    curStage.radius = lerp(curStage.radius, targetRadius, 0.1);
+    curStage.angle = lerp(curStage.angle, targetAngle, 0.1);
+
+    Vec2 stagePos = Vec2::fromPolar(curStage.radius, curStage.angle) + screenCenter;
+
     uint16_t colour;
-    if (highlightedStageIndex == i) {
+    if (isHighlighted) {
       colour = COLOUR_USER;
     } else if (isActive) {
       colour = COLOUR_ACTIVE; 
@@ -506,13 +506,13 @@ void render() {
     
     // Slide indicator
     if (curStage.shouldSlideIn) {
-      float endAngle = wrapDeg(180 + angle);
-      float degToStartAngle = -degreesPerStage * 0.75f;
+      float endAngle = wrapDeg(180 + curStage.angle);
+      float degToStartAngle = -targetDegreesPerStage * 0.75f;
       float startAngle = wrapDeg(endAngle + degToStartAngle);
 
       screen.drawArc(
         screenCenter.x, screenCenter.y, // Position
-        stagePositionRadius + 1, stagePositionRadius - 1, // Radius, Inner Radius
+        curStage.radius + 1, curStage.radius - 1, // Radius, Inner Radius
         startAngle, endAngle, // Arc start & end 
         COLOUR_SKIPPED, COLOUR_BG, // Colour, AA Colour
         false // Smoothing
@@ -521,7 +521,7 @@ void render() {
       if (isActive && sequence.isSliding()) {
         screen.drawArc(
           screenCenter.x, screenCenter.y, // Position
-          stagePositionRadius + 1, stagePositionRadius - 1, // Radius, Inner Radius
+          curStage.radius + 1, curStage.radius - 1, // Radius, Inner Radius
           startAngle, wrapDeg(startAngle - degToStartAngle * sequence.getPulseAnticipation()), // Arc start & end 
           COLOUR_ACTIVE, COLOUR_BG, // Colour, AA Colour
           false // Smoothing
@@ -530,12 +530,12 @@ void render() {
     }
 
     drawStageOutput(curStage.output, colour, stagePos);
-    drawPulses(curStage, angle, stagePos, isActive ? sequence.getCurrentPulseInStage() : -1);
+    drawPulses(curStage, curStage.angle, stagePos, isActive ? sequence.getCurrentPulseInStage() : -1);
     if (curStage.isSkipped) { drawStageStrikethrough(stagePos); }
 
     // Selected indicator
     if (curStage.isSelected) {
-      Vec2 selectionPipPos = Vec2::fromPolar(stagePositionRadius + 16, angle) + screenCenter;
+      Vec2 selectionPipPos = Vec2::fromPolar(curStage.radius + 16, curStage.angle) + screenCenter;
 
       screen.fillCircle(
         selectionPipPos.x, selectionPipPos.y, // Position,
