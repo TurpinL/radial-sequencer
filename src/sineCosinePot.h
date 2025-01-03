@@ -17,21 +17,13 @@ class SineCosinePot {
 
     ~SineCosinePot() {}
 
-    void init() {
-      adc_gpio_init(_adcPinA);
-      adc_gpio_init(_adcPinB);
-    }
-
     void update() {
-      adc_select_input(_adcChannelA);
-      uint16_t adcA = adc_read();
-
-      adc_select_input(_adcChannelB);
-      uint16_t adcB = adc_read();
+      uint16_t adcA = analogRead(A0);
+      uint16_t adcB = analogRead(A1);
 
       // Lowpass filter the results with a lerp
-      float halfAngleFromAdcA = lerp(adcA / 22.7555555556, _lastHalfAngleA, 0.98f);
-      float halfAngleFromAdcB = lerp(adcB / 22.7555555556, _lastHalfAngleB, 0.98f);
+      float halfAngleFromAdcA = lerp(adcA / 5.6888888889, _lastHalfAngleA, 0.98f);
+      float halfAngleFromAdcB = lerp(adcB / 5.6888888889, _lastHalfAngleB, 0.98f);
       _lastHalfAngleA = halfAngleFromAdcA;
       _lastHalfAngleB = halfAngleFromAdcB;
 

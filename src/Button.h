@@ -25,9 +25,10 @@ String toString(Command command) {
         case SLIDE:    return String("Slide ");
         case PULSES:   return String("Pulses");
         case GATEMODE: return String("Mode  ");
-        case CLONE:    return String("Clone  ");
-        case DELETE:   return String("Delete  ");
+        case CLONE:    return String("Clone ");
+        case DELETE:   return String("Delete");
         case NOTHING:  return String("None  ");
+        default:       return String("N/A   ");
     }
 }
 

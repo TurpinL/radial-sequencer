@@ -68,9 +68,6 @@ void setup() {
 
   // Gate LED
   pinMode(9, OUTPUT);
-
-  adc_init();
-  endlessPot.init();
 }
 
 void loop() {
