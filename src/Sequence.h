@@ -11,6 +11,16 @@ enum GateMode {
     NONE
 };
 
+bool isPulseActive(uint8_t index, GateMode gateMode) {
+    if (gateMode == HELD || gateMode == EACH) {
+        return true;
+    } else if (gateMode == FIRST && index == 0) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
 class Stage {
     public:
         float output = 1;
@@ -22,7 +32,12 @@ class Stage {
 
         // Render stuff
         float radius = 0;
+        float targetRadius = 0;
         float angle = 0;
+        float targetAngle = 0;
+
+        float pulsePipsAngle = 0;
+        float targetPulsePipsAngle = 0;
 
         bool isPulseActive(uint8_t index) {
             if (isSkipped) return false;
@@ -100,6 +115,10 @@ class Sequence {
 
         Stage& getStage(size_t index) {
             return _stages.at(index);
+        }
+
+        std::vector<Stage>& getStages() {
+            return _stages;
         }
 
         size_t stageCount() {

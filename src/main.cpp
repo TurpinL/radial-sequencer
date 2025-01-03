@@ -44,12 +44,16 @@ std::vector<Button*> heldButtons;
 float lastHighlightedStageIndicatorAngle = 0;
 uint8_t highlightedStageIndex = 0;
 bool lastSelectToggleState = true;
+bool isEditingGateMode = false;
 
 int32_t lastFrameMillis = 0;
 float fps = 0;
 
+int32_t lastAnimationTickMillis = 0;
+
 void render();
 void processInput();
+void updateAnimations();
 
 void setup() {
   Serial.begin(115200);
@@ -72,6 +76,7 @@ void setup() {
 void loop() {
   processInput();
   sequence.update(micros());
+  updateAnimations();
 
   // Gate LED
   digitalWrite(9, sequence.getGate());
@@ -139,8 +144,8 @@ void processInput() {
   Command modifier = modifierButton != nullptr ? modifierButton->_command : NOTHING;
 
   bool isShiftHeld = false;
-
   bool shouldSupressCursorRotation = false;
+  isEditingGateMode = false;
 
   std::vector<Stage*> selectedStages = sequence.getSelectedStages();
   std::vector<Stage*> affectedStages = selectedStages;
@@ -182,15 +187,13 @@ void processInput() {
   } else if (baseCommand == GATEMODE) {
     shouldSupressCursorRotation = true;
     shouldResetHiddenValue = false;
+    isEditingGateMode = true;
 
     hiddenValue += endlessPot.getAngleDelta();
 
-    if (abs(hiddenValue) > 20) {
-      for (auto stage : affectedStages) {
-        stage->gateMode = (GateMode)((stage->gateMode + (hiddenValue > 0 ? 1 : -1)) % 4);
-      }
-
-      hiddenValue = 0;
+    for (auto stage : affectedStages) {
+        stage->targetPulsePipsAngle = wrapDeg(stage->targetPulsePipsAngle + endlessPot.getAngleDelta());
+        stage->gateMode = (GateMode)((int)round(wrapDeg(stage->targetPulsePipsAngle) / 90.f) % 4);
     }
   } else if (baseCommand == SELECT) {
     if (modifier == NOTHING) {
@@ -271,7 +274,25 @@ void processInput() {
   }
 }
 
-void drawPulsePips(Stage& stage, float angle, Vec2 pos, int8_t currentPulseInStage) {
+void updateAnimations() {
+  if ((millis() - lastAnimationTickMillis) > 16) {
+    lastAnimationTickMillis += 16;
+
+    for (size_t i = 0; i < sequence.stageCount(); i++) {
+      Stage& stage = sequence.getStage(i);
+
+      if (!isEditingGateMode) {
+        stage.targetPulsePipsAngle = stage.gateMode * 90;
+      }
+
+      stage.pulsePipsAngle = stage.pulsePipsAngle + degBetweenAngles(stage.pulsePipsAngle, stage.targetPulsePipsAngle) * 0.25;
+      stage.angle = stage.angle + degBetweenAngles(stage.angle, stage.targetAngle) * 0.1;
+      stage.radius = lerp(stage.radius, stage.targetRadius, 0.1);
+    }
+  }  
+}
+
+void drawPulsePips(Stage& stage, float angle, Vec2 pos, int8_t currentPulseInStage, GateMode gateMode) {
   int rowCount = stage.pulseCount / 4 + (stage.pulseCount % 4 > 0);
   int pxPerPip = 7;
 
@@ -289,11 +310,11 @@ void drawPulsePips(Stage& stage, float angle, Vec2 pos, int8_t currentPulseInSta
       uint8_t pulseIndex = row * 4 + rowIndex;
 
       uint16_t colour;
-      bool isPulseActive = stage.isPulseActive(pulseIndex);
+      bool isActive = isPulseActive(pulseIndex, gateMode) && !stage.isSkipped;
       if (pulseIndex <= currentPulseInStage) {
-        colour = (isPulseActive) ? COLOUR_ACTIVE :  COLOUR_INACTIVE;
+        colour = (isActive) ? COLOUR_ACTIVE :  COLOUR_INACTIVE;
       } else {
-        colour = (isPulseActive) ? COLOUR_INACTIVE :  COLOUR_SKIPPED;
+        colour = (isActive) ? COLOUR_INACTIVE :  COLOUR_SKIPPED;
       }
 
       Vec2 pipPos = pos + Vec2::fromPolar(rowRadius, pulseAngle);
@@ -353,11 +374,11 @@ void drawHeldPulses(Stage& stage, float angle, Vec2 pos) {
   }
 }
 
-void drawPulses(Stage& stage, float angle, Vec2 pos, int8_t currentPulseInStage) {
-  if (stage.gateMode == HELD) {
+void drawPulses(Stage& stage, float angle, Vec2 pos, int8_t currentPulseInStage, GateMode gateMode) {
+  if (gateMode == HELD) {
     drawHeldPulses(stage, angle, pos);
   } else {
-    drawPulsePips(stage, angle, pos, currentPulseInStage);
+    drawPulsePips(stage, angle, pos, currentPulseInStage, gateMode);
   }
 }
 
@@ -485,11 +506,8 @@ void render() {
     bool isHighlighted = highlightedStageIndex == i || curStage.isSelected;
 
     // Update position
-    float targetRadius = defaultStagePositionRadius + (isHighlighted ? 8 : 0);
-    float targetAngle = i * targetDegreesPerStage;
-
-    curStage.radius = lerp(curStage.radius, targetRadius, 0.1);
-    curStage.angle = lerp(curStage.angle, targetAngle, 0.1);
+    curStage.targetRadius = defaultStagePositionRadius + (isHighlighted ? 8 : 0);
+    curStage.targetAngle = i * targetDegreesPerStage;
 
     Vec2 stagePos = Vec2::fromPolar(curStage.radius, curStage.angle) + screenCenter;
 
@@ -530,7 +548,25 @@ void render() {
     }
 
     drawStageOutput(curStage.output, colour, stagePos);
-    drawPulses(curStage, curStage.angle, stagePos, isActive ? sequence.getCurrentPulseInStage() : -1);
+
+    bool isEditingGateModeOfThisStage = isEditingGateMode && (i == highlightedStageIndex || curStage.isSelected);
+
+    if (curStage.gateMode == EACH || isEditingGateModeOfThisStage) {
+      drawPulses(curStage, curStage.angle + curStage.pulsePipsAngle, stagePos, isActive ? sequence.getCurrentPulseInStage() : -1, EACH);
+    }
+
+    if (curStage.gateMode == HELD || isEditingGateModeOfThisStage) {
+      drawPulses(curStage, curStage.angle - 90 + curStage.pulsePipsAngle, stagePos, isActive ? sequence.getCurrentPulseInStage() : -1, HELD);
+    }
+
+    if (curStage.gateMode == FIRST || isEditingGateModeOfThisStage) {
+      drawPulses(curStage, curStage.angle - 180 + curStage.pulsePipsAngle, stagePos, isActive ? sequence.getCurrentPulseInStage() : -1, FIRST);
+    }
+
+    if (curStage.gateMode == NONE || isEditingGateModeOfThisStage) {
+      drawPulses(curStage, curStage.angle - 270 + curStage.pulsePipsAngle, stagePos, isActive ? sequence.getCurrentPulseInStage() : -1, NONE);
+    }
+
     if (curStage.isSkipped) { drawStageStrikethrough(stagePos); }
 
     // Selected indicator
@@ -561,6 +597,9 @@ void render() {
   //   screen.drawString("bpm", screenCenter.x, screenCenter.y + 6, 2);
   // }
 
+  // Gate
+  drawStageOutput(sequence.getOutput(), sequence.getGate() ? COLOUR_ACTIVE : COLOUR_SKIPPED, screenCenter);
+  
   // FPS
   screen.setTextColor(COLOUR_INACTIVE);
   screen.drawNumber(fps, screenCenter.x, 12, 2);
@@ -574,8 +613,5 @@ void render() {
     screen.drawString(toString(heldButtons[i]->_command), pos.x, pos.y, 2);
   }
 
-  // Gate
-  drawStageOutput(sequence.getOutput(), sequence.getGate() ? COLOUR_ACTIVE : COLOUR_SKIPPED, screenCenter);
-  
   tft.pushImageDMA(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, screenPtr);
 }
