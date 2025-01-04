@@ -32,12 +32,12 @@ Sequence sequence = Sequence(8);
 SineCosinePot endlessPot = SineCosinePot(0, 1);
 float cursorAngle = 0;
 
-Button buttonA = Button(6, CLONE);
-Button buttonB = Button(8, DELETE);
-Button buttonC = Button(7, SELECT);
-Button buttonD = Button(21, SLIDE);
-Button buttonE = Button(22, PULSES);
-Button buttonF = Button(4, GATEMODE);
+Button buttonA = Button(D6, CLONE);
+Button buttonB = Button(D8, DELETE);
+Button buttonC = Button(D7, SELECT);
+Button buttonD = Button(D21, SLIDE);
+Button buttonE = Button(D22, PULSES);
+Button buttonF = Button(D4, GATEMODE);
 std::vector<Button*> buttons =        {&buttonA, &buttonB, &buttonC, &buttonD, &buttonE, &buttonF};
 std::vector<Button*> heldButtons;
 
@@ -67,7 +67,7 @@ void setup() {
   tft.startWrite(); // TFT chip select held low permanently
 
   // Gate LED
-  pinMode(9, OUTPUT);
+  pinMode(D9, OUTPUT);
 }
 
 void loop() {
@@ -80,11 +80,11 @@ void loop() {
   // Pitch LED
   float output = sequence.getOutput();
   if (output > 0) {
-    analogWrite(10, powf(output, 2) * 255);
-    analogWrite(11, 0);
+    analogWrite(D10, powf(output, 2) * 255);
+    analogWrite(D11, 0);
   } else {
-    analogWrite(10, 0);
-    analogWrite(11, powf(output, 2) * 255);
+    analogWrite(D10, 0);
+    analogWrite(D11, powf(output, 2) * 255);
   }
   
 

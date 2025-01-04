@@ -37,13 +37,14 @@ class Button {
         Button(uint gpio, Command command) {
             _gpio = gpio;
             _command = command;
+            pinMode(_gpio, INPUT_PULLUP);
         }
 
         void update() {
             _wasDoubleTapped = false;
             _didDoubleTapWindowPass = false;
             _lastState = _state;
-            _state = (_state << 1) + gpio_get(_gpio);
+            _state = (_state << 1) + !gpio_get(_gpio);
 
             if (risingEdge()) {
                 if (millis() - _lastActivation <= DOUBLE_TAP_WINDOW_MS) {
