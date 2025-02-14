@@ -3,6 +3,9 @@
 #define MAX_STAGES 16
 
 #include <vector>
+#include <Adafruit_TinyUSB.h>
+#include <MIDI.h>
+#include <algorithm>
 
 enum GateMode {
     EACH,
@@ -77,6 +80,74 @@ class Sequence {
             _stages.push_back(Stage());
         }
 
+        void swapStages(size_t indexA, size_t indexB) {
+            Stage stageA = _stages[indexA];
+            Stage stageB = _stages[indexB];
+            _stages.erase(_stages.begin() + indexA);
+            _stages.insert(_stages.begin() + indexA, stageB);
+
+            _stages.erase(_stages.begin() + indexB);
+            _stages.insert(_stages.begin() + indexB, stageA);
+
+            if (_activeStageIndex == indexA) {
+                _activeStageIndex = indexB;
+            } else if (_activeStageIndex == indexB) {
+                _activeStageIndex = indexA;
+            }
+        }
+
+        void moveStages(std::vector<size_t> stagesToMove, int direction) {
+            if (direction != -1 && direction != 1) return;
+
+            std::vector<int> finalPositions(_stages.size()); // A mapping from the _stages vector to the final result
+            std::fill(finalPositions.begin(), finalPositions.end(), -1);
+
+            // Place all stagesToMove into the finalPositions vector, incremented/decremented by 1
+            // eg.
+            // direction = 1
+            // stagesToMove =    0     2     4 [0, 2, 4] 
+            //                   ^--v  ^--v  ^-> wraps to index 0
+            // finalPositions =  4  0 -1  2 -1
+            for (size_t index : stagesToMove) {
+                size_t newIndex = wrap(index + direction, 0, finalPositions.size());
+                finalPositions[newIndex] = index;
+            }
+
+
+            // Fill in the gaps with unmoved elements
+            // before: finalPositions =  4  0 -1  2 -1
+            // after:  finalPositions =  4  0  3  2  1
+            for (int i = 0; i < finalPositions.size(); i++) {
+                // -1 indicates a stage hasn't been assigned to this space yet
+                if (finalPositions[i] == -1) {
+                    // Fill the gap with the nearest index that isn't in "stagesToMove"
+                    // Increment/Decrement by "direction"
+                    int possibleIndex = i;
+
+                    // Increment/Decrement foo until it doesn't exist in stagesToMove
+                    while (std::find(stagesToMove.begin(), stagesToMove.end(), possibleIndex) != stagesToMove.end()) {
+                        possibleIndex = wrap(possibleIndex + direction, 0, finalPositions.size());
+                    }
+
+                    finalPositions[i] = possibleIndex;
+                }
+            }
+
+            // Update active stage index
+            size_t newActiveStageIndex = std::find(finalPositions.begin(), finalPositions.end(), _activeStageIndex) - finalPositions.begin();
+
+            _activeStageIndex = newActiveStageIndex;
+            updateNextStageIndex();
+
+            // Construct a new vector with all stages in their new positions
+            std::vector<Stage> result;
+            for (int originalIndex : finalPositions) {
+                result.push_back(_stages[originalIndex]);
+            }
+
+            _stages = result;
+        }
+
         void insertStage(size_t index, Stage stage) {
             if (stageCount() <= MAX_STAGES) {
                 _stages.insert(_stages.begin() + index, stage);
@@ -141,38 +212,42 @@ class Sequence {
         }
 
         void update(unsigned long elapsedMicros) {
-            Stage &activeStage = getActiveStage();
-
             if (elapsedMicros - _lastPulseMicros >= _microsPerPulse) {
                 _lastPulseMicros += _microsPerPulse;
 
-                if (isLastPulseOfStage() || activeStage.isSkipped) {
+                if (isLastPulseOfStage() || getActiveStage().isSkipped) {
                     _outputOfLastStage = _output;
                     _activeStageIndex = _nextStageIndex;
                     _currentPulseInStage = 0;
-
+                    
                     updateNextStageIndex();
                 } else {
                     _currentPulseInStage++;
                 }
             }
 
-            if (activeStage.gateMode == HELD) {
-                _gate = true;
+            _pulseAnticipation = (elapsedMicros - _lastPulseMicros) / (float)_microsPerPulse;
+            _slideProgress = min(_pulseAnticipation, _gateLength) / _gateLength;
+
+            // TODO: Understand how this assignment works.
+            // I expected it to overwrite the reference, but instead it seems to 
+            // Copy the active stage overwriting the initial active stage
+            // How do C++ references work...
+
+            if (getActiveStage().gateMode == HELD) {
+                // Close the gate 1 16th note before the end of the held note to create some separation from the next stage
+                _gate = !isLastPulseOfStage() || _pulseAnticipation < 0.9375; 
             } else {
-                bool isPulseActive = activeStage.isPulseActive(_currentPulseInStage);
-                bool hasGateLengthElapsed = elapsedMicros - _lastPulseMicros > (_microsPerPulse * _gateLength);
+                bool isPulseActive = getActiveStage().isPulseActive(_currentPulseInStage);
+                bool hasGateLengthElapsed = _pulseAnticipation > _gateLength;
 
                 _gate = isPulseActive && !hasGateLengthElapsed;
             }
 
-            _pulseAnticipation = (elapsedMicros - _lastPulseMicros) / (float)_microsPerPulse;
-            _slideProgress = min(_pulseAnticipation, _gateLength) / _gateLength;
-
             if (isSliding()) {
-                _output = lerp(_outputOfLastStage, activeStage.output, _slideProgress);
+                _output = lerp(_outputOfLastStage, getActiveStage().output, _slideProgress);
             } else {
-                _output = activeStage.output;
+                _output = getActiveStage().output;
             }
         }
 
@@ -259,10 +334,9 @@ class Sequence {
         std::vector<Stage> _stages;
         size_t _activeStageIndex;
         size_t _nextStageIndex = 0;
-        float _output;
-        float _outputOfLastStage;
+        float _outputOfLastStage; // Referenced when sliding between stages
         float _bpm = 120;
-        uint8_t _subdivision = 2;
+        uint8_t _subdivision = 4;
         unsigned long _microsPerPulse;
         unsigned long _lastPulseMicros = 0;
         float _gateLength = 0.75f; // 1 = always on, 0 = never on
@@ -270,6 +344,7 @@ class Sequence {
         float _slideProgress; // How close are we sliding between notes
         uint8_t _currentPulseInStage = 0; // How many pulses have occurred for the current stage
 
+        float _output;
         bool _gate = false;
 
         void _updateMicrosPerPulse() {

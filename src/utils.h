@@ -10,6 +10,14 @@ inline float fwrap(float x, float min, float max) {
     return (x >= 0 ? min : max) + fmodf(x, max - min);
 }
 
+inline int wrap(int x, int min, int max) {
+    if (max == min) return min;
+    if (min > max) return wrap(x, max, min);
+    if (min < 0) return wrap(x - min, min - min, max - min) + min;
+
+    return (x >= 0 ? min : max) + (x % (max - min));
+}
+
 // wrap a float value between 0 and 360
 inline float wrapDeg(float deg) {
     return (deg >= 0 ? 0 : 360) + fmodf(deg, 360 - 0);

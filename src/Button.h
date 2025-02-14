@@ -13,6 +13,7 @@ enum Command {
     SELECT,
     SLIDE,
     CLONE,
+    MOVE,
     DELETE,
     NOTHING
 };
@@ -26,6 +27,7 @@ String toString(Command command) {
         case PULSES:   return String("Pulses");
         case GATEMODE: return String("Mode  ");
         case CLONE:    return String("Clone ");
+        case MOVE:     return String("Move  ");
         case DELETE:   return String("Delete");
         case NOTHING:  return String("None  ");
         default:       return String("N/A   ");

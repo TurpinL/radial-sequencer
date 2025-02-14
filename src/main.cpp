@@ -8,6 +8,8 @@
 #include "Button.h"
 #include <set>
 #include <algorithm>
+#include <Adafruit_TinyUSB.h>
+#include <MIDI.h>
 
 #define SCREEN_WIDTH 240
 #define SCREEN_HALF_WIDTH 120
@@ -20,6 +22,13 @@ const uint16_t COLOUR_USER =      0x96cd;
 const uint16_t COLOUR_ACTIVE =    0xfd4f;
 const uint16_t COLOUR_INACTIVE =  0xaa21;
 const uint16_t COLOUR_SKIPPED =   0x5180;
+
+// USB MIDI object
+Adafruit_USBD_MIDI usb_midi;
+
+// Create a new instance of the Arduino MIDI Library,
+// and attach usb_midi as the transport.
+MIDI_CREATE_INSTANCE(Adafruit_USBD_MIDI, usb_midi, MIDI);
 
 TFT_eSPI tft = TFT_eSPI();
 TFT_eSprite screen = TFT_eSprite(&tft);
@@ -35,27 +44,35 @@ float cursorAngle = 0;
 Button buttonA = Button(D6, CLONE);
 Button buttonB = Button(D8, DELETE);
 Button buttonC = Button(D7, SELECT);
-Button buttonD = Button(D21, SLIDE);
+Button buttonD = Button(D21, GATEMODE);
 Button buttonE = Button(D22, PULSES);
-Button buttonF = Button(D4, GATEMODE);
-std::vector<Button*> buttons =        {&buttonA, &buttonB, &buttonC, &buttonD, &buttonE, &buttonF};
+Button buttonF = Button(D4, MOVE);
+std::vector<Button*> buttons = {&buttonA, &buttonB, &buttonC, &buttonD, &buttonE, &buttonF};
 std::vector<Button*> heldButtons;
 
 float lastHighlightedStageIndicatorAngle = 0;
 uint8_t highlightedStageIndex = 0;
 bool lastSelectToggleState = true;
 bool isEditingGateMode = false;
+bool isEditingPosition = false;
 
 int32_t lastFrameMillis = 0;
 float fps = 0;
 
 int32_t lastAnimationTickMillis = 0;
 
+bool lastGateValue = false;
+float lastOutputValue = 0;
+
 void render();
 void processInput();
 void updateAnimations();
 
 void setup() {
+  // Initialize MIDI, and listen to all MIDI channels
+  // This will also call usb_midi's begin()
+  MIDI.begin(MIDI_CHANNEL_OMNI);
+
   Serial.begin(115200);
 
   tft.init();
@@ -67,16 +84,29 @@ void setup() {
   tft.startWrite(); // TFT chip select held low permanently
 
   // Gate LED
-  pinMode(D9, OUTPUT);
+  pinMode(D12, OUTPUT);
 }
+
+uint8_t currentNote = 0;
 
 void loop() {
   processInput();
   sequence.update(micros());
+
+  if (sequence.getGate() != lastGateValue) {
+    if (sequence.getGate()) {
+      currentNote = 60 + round(sequence.getOutput() * 24);
+      MIDI.sendNoteOn(currentNote, 255, 1);
+    } else {
+      MIDI.sendNoteOff(currentNote, 0, 1);
+    }
+    lastGateValue = sequence.getGate();
+  }
+
   updateAnimations();
 
   // Gate LED
-  digitalWrite(9, sequence.getGate());
+  digitalWrite(D12, sequence.getGate());
   // Pitch LED
   float output = sequence.getOutput();
   if (output > 0) {
@@ -87,7 +117,6 @@ void loop() {
     analogWrite(D11, powf(output, 2) * 255);
   }
   
-
   if (!tft.dmaBusy()) {
     render();
 
@@ -120,18 +149,21 @@ void updateButtons() {
   }
 }
 
+float hiddenValue = 0;
+
 void processInput() {
   endlessPot.update();
   updateButtons();
 
   // Hidden value used for... things?
-  static float hiddenValue = 0;
   bool shouldResetHiddenValue = true;
 
   // Update highlighted stage
   float degreesPerStage = 360 / (float)sequence.stageCount();
   uint8_t lastHighlightedStageIndex = highlightedStageIndex;
-  highlightedStageIndex = (int)roundf(cursorAngle / degreesPerStage) % sequence.stageCount();
+  if (!isEditingPosition) {
+    highlightedStageIndex = (int)roundf(cursorAngle / degreesPerStage) % sequence.stageCount();
+  }
   Stage &highlightedStage = sequence.getStage(highlightedStageIndex);
   
   Button *baseButton = heldButtons.size() > 0 ? heldButtons[0] : nullptr;
@@ -143,6 +175,7 @@ void processInput() {
   bool isShiftHeld = false;
   bool shouldSupressCursorRotation = false;
   isEditingGateMode = false;
+  isEditingPosition = false;
 
   std::vector<Stage*> selectedStages = sequence.getSelectedStages();
   std::vector<Stage*> affectedStages = selectedStages;
@@ -258,6 +291,30 @@ void processInput() {
         ++rit;
       }
     }
+  } else if (baseCommand == MOVE) {
+    shouldResetHiddenValue = false;
+    isEditingPosition = true;
+
+    hiddenValue += endlessPot.getAngleDelta();
+    float degreesPerStage = 360 / (float)sequence.stageCount();
+
+    // When we move the stages far enough rearrange the sequence
+    if (abs(hiddenValue) > degreesPerStage) {
+      int direction = (hiddenValue > 0) ? 1 : -1;
+      
+      std::vector<size_t> indexesOfStagesToMove;
+      for (Stage* stage : affectedStages) {
+        size_t stageIndex = sequence.indexOfStage(stage);
+        indexesOfStagesToMove.push_back(stageIndex);
+      }
+
+      sequence.moveStages(indexesOfStagesToMove, direction);
+
+      // The highlightedStage will be moved by this action, so update the index
+      highlightedStageIndex = wrap((int)highlightedStageIndex + direction, 0, sequence.stageCount());
+
+      hiddenValue = 0;
+    }
   }
 
   if (!shouldSupressCursorRotation) {
@@ -325,7 +382,7 @@ void drawPulsePips(Stage& stage, float angle, Vec2 pos, int8_t currentPulseInSta
 }
 
 void drawHeldPulses(Stage& stage, float angle, Vec2 pos) {
-  bool isStageActive = &stage == &(sequence.getActiveStage());
+  bool isStageActive = &stage == &sequence.getActiveStage();
 
   // 0 to pulseCount
   float progress;
@@ -503,8 +560,19 @@ void render() {
     bool isHighlighted = highlightedStageIndex == i || curStage.isSelected;
 
     // Update position
-    curStage.targetRadius = defaultStagePositionRadius + (isHighlighted ? 8 : 0);
+    curStage.targetRadius = defaultStagePositionRadius;
+    curStage.targetRadius += (isHighlighted ? 8 : 0);
+    if (isEditingPosition) {
+      curStage.targetRadius += (isHighlighted ? 4 : -8);
+    }
+
     curStage.targetAngle = i * targetDegreesPerStage;
+    if (isEditingPosition && isHighlighted) {
+      curStage.targetAngle += hiddenValue;
+      // Skip the animation for a more direct feeling of control
+      curStage.angle = curStage.targetAngle;
+    }
+    
 
     Vec2 stagePos = Vec2::fromPolar(curStage.radius, curStage.angle) + screenCenter;
 

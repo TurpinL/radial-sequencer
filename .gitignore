@@ -3,3 +3,5 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+KiCad/Radial Sequencer Test Board 1/Radial Sequencer Test Board 1-backups
+*.lck
