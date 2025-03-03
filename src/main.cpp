@@ -1,11 +1,11 @@
 #include <Arduino.h>
 #include <TFT_eSPI.h>
 #include "utils.h"
-#include "colourUtils.h"
 #include "SineCosinePot.h"
 #include "Sequence.h"
 #include "Vec2.h"
 #include "Button.h"
+#include "Multiplexer.h"
 #include <set>
 #include <algorithm>
 #include <Adafruit_TinyUSB.h>
@@ -36,19 +36,35 @@ uint16_t* screenPtr;
 
 const Vec2 screenCenter = Vec2(SCREEN_HALF_WIDTH, SCREEN_HALF_HEIGHT);
 
-Sequence sequence = Sequence(8);
+Sequence sequence = Sequence(6);
 
 SineCosinePot endlessPot = SineCosinePot(0, 1);
 float cursorAngle = 0;
 
-Button buttonA = Button(D6, CLONE);
-Button buttonB = Button(D8, DELETE);
-Button buttonC = Button(D7, SELECT);
-Button buttonD = Button(D21, GATEMODE);
-Button buttonE = Button(D22, PULSES);
-Button buttonF = Button(D4, MOVE);
-std::vector<Button*> buttons = {&buttonA, &buttonB, &buttonC, &buttonD, &buttonE, &buttonF};
+uint8_t gate1Pin = D14;
+uint8_t gate2Pin = D15;
+uint8_t pitchPin = D22;
+uint8_t cvPin = D21;
+uint8_t switchMultPin = D9;
+uint8_t ledMultPin = D4;
+
+Button pitchBtn = Button(PITCH);
+Button deleteBtn = Button(DELETE);
+Button gatemodeBtn = Button(GATEMODE);
+Button selectBtn = Button(SELECT);
+Button pulsesBtn = Button(PULSES);
+Button moveBtn = Button(MOVE);
+std::vector<Button*> buttons = {
+  nullptr, nullptr, nullptr, nullptr, 
+  nullptr, nullptr, &selectBtn, &pitchBtn,
+  nullptr, nullptr, &moveBtn, nullptr,
+  nullptr, &pulsesBtn, &gatemodeBtn, nullptr
+};
+// std::vector<Button*> buttons = {};
 std::vector<Button*> heldButtons;
+
+Multiplexer switchMult = Multiplexer(D13, D12, D11, D10);
+Multiplexer switchLedMult = Multiplexer(D8, D7, D6, D5);
 
 float lastHighlightedStageIndicatorAngle = 0;
 uint8_t highlightedStageIndex = 0;
@@ -62,7 +78,6 @@ float fps = 0;
 int32_t lastAnimationTickMillis = 0;
 
 bool lastGateValue = false;
-float lastOutputValue = 0;
 
 void render();
 void processInput();
@@ -77,14 +92,18 @@ void setup() {
 
   tft.init();
   tft.initDMA();
-  tft.setRotation(3);
+  tft.setRotation(1);
   tft.fillScreen(COLOUR_BG);
   screenPtr = (uint16_t*)screen.createSprite(SCREEN_WIDTH, SCREEN_HEIGHT);
   screen.setTextDatum(MC_DATUM);
   tft.startWrite(); // TFT chip select held low permanently
 
   // Gate LED
-  pinMode(D12, OUTPUT);
+  pinMode(gate1Pin, OUTPUT);
+  pinMode(gate2Pin, OUTPUT);
+
+  pinMode(switchMultPin, INPUT_PULLUP);
+  pinMode(ledMultPin, OUTPUT);
 }
 
 uint8_t currentNote = 0;
@@ -106,16 +125,13 @@ void loop() {
   updateAnimations();
 
   // Gate LED
-  digitalWrite(D12, sequence.getGate());
+  digitalWrite(gate1Pin, sequence.getGate());
+  // digitalWrite(gate2Pin, sequence.getGate());
   // Pitch LED
-  float output = sequence.getOutput();
-  if (output > 0) {
-    analogWrite(D10, powf(output, 2) * 255);
-    analogWrite(D11, 0);
-  } else {
-    analogWrite(D10, 0);
-    analogWrite(D11, powf(output, 2) * 255);
-  }
+  analogWrite(pitchPin, powf((sequence.getOutput() + 1) / 2, 2) * 255);
+  // analogWrite(cvPin, powf((sequence.getOutput() + 1) / 2, 2) * 255);
+
+  analogWrite(ledMultPin, 30);
   
   if (!tft.dmaBusy()) {
     render();
@@ -127,26 +143,54 @@ void loop() {
   }
 }
 
-void updateButtons() {
-  for (auto button : buttons) {
-    button->update();
-
-    heldButtons.clear();
-    
-    // Add all held buttons to the list
-    for (Button *x: buttons) {
-      if ( x->held() ) { 
-        heldButtons.push_back(x);
-      }
-    }
-
-    // Sort them by timestamp
-    std::sort(heldButtons.begin(), heldButtons.end(), 
-      [](Button *a, Button *b) { 
-        return a->getLastActivation() < b->getLastActivation(); 
-      }
-    );
+uint nextLedIndex = 0;
+void loop1() {
+  if (buttons[nextLedIndex] != nullptr) {
+    switchLedMult.select(nextLedIndex);
+  } else {
+    switchLedMult.select(0);
   }
+
+  nextLedIndex += 1;
+  nextLedIndex %= 16;
+
+  delayMicroseconds(100);
+}
+
+uint nextButtonIndex = 0;
+void updateButtons() {
+  Button *buttonToUpdate = buttons[nextButtonIndex];
+
+  // TODO: Rethink 
+  for (Button *x: buttons) {
+    if ( x != nullptr ) {
+      x->stabilizeState();
+    }
+  }
+
+  if (buttonToUpdate != nullptr) {
+    buttonToUpdate->update(!gpio_get(D9));
+  }
+
+  nextButtonIndex += 1;
+  nextButtonIndex %= 16;
+  switchMult.select(nextButtonIndex);
+
+  heldButtons.clear();
+    
+  // Add all held buttons to the list
+  for (Button *x: buttons) {
+    if ( x != nullptr && x->held() ) { 
+      heldButtons.push_back(x);
+    }
+  }
+
+  // Sort them by timestamp
+  std::sort(heldButtons.begin(), heldButtons.end(), 
+    [](Button *a, Button *b) { 
+      return a->getLastActivation() < b->getLastActivation(); 
+    }
+  );
 }
 
 float hiddenValue = 0;
@@ -154,6 +198,12 @@ float hiddenValue = 0;
 void processInput() {
   endlessPot.update();
   updateButtons();
+
+  auto newBpm = (analogRead(A2) / 1024.f) * 100 + 60;
+  if (abs(sequence.getBpm() - newBpm) > 2) {
+    sequence.setBpm(newBpm);
+  }
+  
 
   // Hidden value used for... things?
   bool shouldResetHiddenValue = true;
@@ -667,7 +717,7 @@ void render() {
   
   // FPS
   screen.setTextColor(COLOUR_INACTIVE);
-  screen.drawNumber(fps, screenCenter.x, 12, 2);
+  screen.drawNumber(fps/100, screenCenter.x, 12, 2);
   screen.drawString("fps", screenCenter.x, 24, 2);
 
   // Debug

@@ -36,17 +36,15 @@ String toString(Command command) {
 
 class Button {
     public:
-        Button(uint gpio, Command command) {
-            _gpio = gpio;
+        Button(Command command) {
             _command = command;
-            pinMode(_gpio, INPUT_PULLUP);
         }
 
-        void update() {
+        void update(bool isPressed) {
             _wasDoubleTapped = false;
             _didDoubleTapWindowPass = false;
             _lastState = _state;
-            _state = (_state << 1) + !gpio_get(_gpio);
+            _state = (_state << 1) + isPressed;
 
             if (risingEdge()) {
                 if (millis() - _lastActivation <= DOUBLE_TAP_WINDOW_MS) {
@@ -62,6 +60,13 @@ class Button {
                 _didDoubleTapWindowPass = true;
                 _isPrimedForDoubleTap = false;
             }
+        }
+
+        // To be called at the start of each tick so that
+        // risingEdge or fallingEdge aren't don't stay high
+        // for multiple ticks
+        void stabilizeState() {
+            _lastState = _state;
         }
 
         bool held() {
@@ -88,9 +93,8 @@ class Button {
             return _lastActivation;
         }
         Command _command;
-    private:
-        uint _gpio;
         uint8_t _state;
+    private:
         uint8_t _lastState;
         unsigned long _lastActivation;
         bool _wasDoubleTapped;
