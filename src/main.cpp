@@ -240,7 +240,7 @@ void processInput() {
 
     for (auto stage : affectedStages) {
       float newVoltage = stage->output + endlessPot.getAngleDelta() / 180.f;
-      stage->output = coerceInRange(newVoltage, -1, 1);
+      stage->output = coerceInRange(newVoltage, 0, 5);
     }
   } else if (baseCommand == SKIP) {
     if (baseButton->risingEdge()) {
@@ -487,27 +487,32 @@ void drawPulses(Stage& stage, float angle, Vec2 pos, int8_t currentPulseInStage,
 }
 
 void drawStageOutput(float output, uint16_t colour, Vec2 pos) {
-  const float minVoltageSizeThing = 0.5f;
+  int octave = (int)output;
+  float semitone = output - octave;
 
-  if (output <= -minVoltageSizeThing) {
-    screen.drawCircle(
-      pos.x, pos.y, // Position,
-      -output * 10,
-      colour
-    );
-  } else if (output >= minVoltageSizeThing) {
-    screen.fillCircle(
-      pos.x, pos.y, // Position,
-      output * 10,
-      colour
+  if (semitone < 0.5) {
+    screen.fillSmoothCircle(
+      pos.x, pos.y,
+      semitone * 8 + 2,
+      colour, COLOUR_BG
     );
   } else {
     screen.drawArc(
       pos.x, pos.y, // Position
-      minVoltageSizeThing * 10, 5 - (output + minVoltageSizeThing) * 5, // Radius, Inner Radius
+      semitone * 8 + 2, (semitone - 0.5) * 2 * 11, // Radius, Inner Radius
       0, 359, // Arc start & end 
       colour, COLOUR_BG, // Colour, AA Colour
-      false // Smoothing
+      true // Smoothing
+    );
+  }
+
+  for (int i = 0; i < octave; i++) {
+    float extraSize = max(0, semitone * 8 - 8 + 2);
+
+    screen.drawCircle(
+      pos.x, pos.y,
+      10 + 2 * i + extraSize,
+      colour
     );
   }
 }
@@ -662,7 +667,7 @@ void render() {
       }
     }
 
-    drawStageOutput(curStage.output, colour, stagePos);
+    drawStageOutput2(curStage.output, colour, stagePos);
 
     bool isEditingGateModeOfThisStage = isEditingGateMode && (i == highlightedStageIndex || curStage.isSelected);
 
@@ -713,7 +718,7 @@ void render() {
   // }
 
   // Gate
-  drawStageOutput(sequence.getOutput(), sequence.getGate() ? COLOUR_ACTIVE : COLOUR_SKIPPED, screenCenter);
+  drawStageOutput2(sequence.getOutput(), sequence.getGate() ? COLOUR_ACTIVE : COLOUR_SKIPPED, screenCenter);
   
   // FPS
   screen.setTextColor(COLOUR_INACTIVE);

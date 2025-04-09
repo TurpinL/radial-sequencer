@@ -67,7 +67,7 @@ class Sequence {
             for (int i = 0; i < stageCount; i++) {
                 addStage();
                 _stages.back().pulseCount = (rand() % 2) + 1;
-                _stages.back().output = (rand() % 100) / 100.f;//-((rand() % 100) / 50.f) + 1;
+                _stages.back().output = (rand() % 500) / 100.f;//-((rand() % 100) / 50.f) + 1;
                 _stages.back().gateMode = EACH;
             }
 
