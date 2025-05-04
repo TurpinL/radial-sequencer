@@ -15,6 +15,8 @@ enum Command {
     CLONE,
     MOVE,
     DELETE,
+    UNDO,
+    REDO,
     NOTHING
 };
 
@@ -29,6 +31,8 @@ String toString(Command command) {
         case CLONE:    return String("Clone ");
         case MOVE:     return String("Move  ");
         case DELETE:   return String("Delete");
+        case UNDO:     return String("Undo  ");
+        case REDO:     return String("Redo  ");
         case NOTHING:  return String("None  ");
         default:       return String("N/A   ");
     }
@@ -63,7 +67,7 @@ class Button {
         }
 
         // To be called at the start of each tick so that
-        // risingEdge or fallingEdge aren't don't stay high
+        // risingEdge or fallingEdge don't stay high
         // for multiple ticks
         void stabilizeState() {
             _lastState = _state;
@@ -93,11 +97,11 @@ class Button {
             return _lastActivation;
         }
         Command _command;
-        uint8_t _state;
+        uint8_t _state = 0;
     private:
-        uint8_t _lastState;
-        unsigned long _lastActivation;
-        bool _wasDoubleTapped;
+        uint8_t _lastState = 0;
+        unsigned long _lastActivation = 0;
+        bool _wasDoubleTapped = false;
         bool _isPrimedForDoubleTap = false;
-        bool _didDoubleTapWindowPass;
+        bool _didDoubleTapWindowPass = false;
 };

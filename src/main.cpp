@@ -37,6 +37,11 @@ uint16_t* screenPtr;
 const Vec2 screenCenter = Vec2(SCREEN_HALF_WIDTH, SCREEN_HALF_HEIGHT);
 
 Sequence sequence = Sequence(6);
+const uint8_t UNDO_REDO_SIZE = 24;
+Sequence history[UNDO_REDO_SIZE];
+uint8_t curPosInHistory = 0;
+uint8_t indexOfOldestSnapshot = 0;
+uint8_t indexOfNewestSnapshot = 0;
 
 SineCosinePot endlessPot = SineCosinePot(0, 1);
 float cursorAngle = 0;
@@ -54,14 +59,15 @@ Button gatemodeBtn = Button(GATEMODE);
 Button selectBtn = Button(SELECT);
 Button pulsesBtn = Button(PULSES);
 Button moveBtn = Button(MOVE);
+Button undoBtn = Button(UNDO);
+Button redoBtn = Button(REDO);
 std::vector<Button*> buttons = {
   nullptr, nullptr, nullptr, nullptr, 
   nullptr, nullptr, &selectBtn, &pitchBtn,
-  nullptr, nullptr, &moveBtn, nullptr,
-  nullptr, &pulsesBtn, &gatemodeBtn, nullptr
+  nullptr,  nullptr, &moveBtn, nullptr,
+  &redoBtn, &pulsesBtn, &gatemodeBtn, &undoBtn
 };
-// std::vector<Button*> buttons = {};
-std::vector<Button*> heldButtons;
+std::vector<Button*> activeButtons; // Buttons that are held, or fallingEdge == true.
 
 Multiplexer switchMult = Multiplexer(D13, D12, D11, D10);
 Multiplexer switchLedMult = Multiplexer(D8, D7, D6, D5);
@@ -71,6 +77,7 @@ uint8_t highlightedStageIndex = 0;
 bool lastSelectToggleState = true;
 bool isEditingGateMode = false;
 bool isEditingPosition = false;
+bool didJustLoadSnapshot = false;
 
 int32_t lastFrameMillis = 0;
 float fps = 0;
@@ -80,10 +87,14 @@ int32_t lastAnimationTickMillis = 0;
 bool lastGateValue = false;
 
 void render();
+void saveUndoRedoSnapshot();
 void processInput();
 void updateAnimations();
+void updateTargetPositions();
 
 void setup() {
+  history[0] = sequence;
+
   // Initialize MIDI, and listen to all MIDI channels
   // This will also call usb_midi's begin()
   MIDI.begin(MIDI_CHANNEL_OMNI);
@@ -122,6 +133,7 @@ void loop() {
     lastGateValue = sequence.getGate();
   }
 
+  updateTargetPositions();
   updateAnimations();
 
   // Gate LED
@@ -141,6 +153,8 @@ void loop() {
 
     lastFrameMillis = millis();
   }
+
+  didJustLoadSnapshot = false;
 }
 
 uint nextLedIndex = 0;
@@ -157,7 +171,46 @@ void loop1() {
   delayMicroseconds(100);
 }
 
+void saveUndoRedoSnapshot() {
+  // Write the current sequence to the next slot in the ring buffer
+  curPosInHistory = wrap(curPosInHistory + 1, 0, UNDO_REDO_SIZE);
+  history[curPosInHistory] = sequence;
+
+  indexOfNewestSnapshot = curPosInHistory;
+
+  // Sanitize the stored sequence
+  history[curPosInHistory].skipAnimations();
+
+  // If the ring buffer has caught up to it's tail, update the location of the tail
+  if (indexOfNewestSnapshot == indexOfOldestSnapshot) {
+    indexOfOldestSnapshot = wrap(indexOfOldestSnapshot + 1, 0, UNDO_REDO_SIZE);
+  }
+}
+
+void undo() {
+  if (curPosInHistory == indexOfOldestSnapshot) return; // Can't go further back
+
+  curPosInHistory = wrap(curPosInHistory - 1, 0, UNDO_REDO_SIZE);
+  sequence = history[curPosInHistory];
+
+  didJustLoadSnapshot = true;
+}
+
+void redo() {
+  if (curPosInHistory == indexOfNewestSnapshot) return; // Can't go further forwards
+
+  curPosInHistory = wrap(curPosInHistory + 1, 0, UNDO_REDO_SIZE);
+  sequence = history[curPosInHistory];
+
+  didJustLoadSnapshot = true;
+}
+
 uint nextButtonIndex = 0;
+
+// Updates the state of one of the buttons, and progresses
+// the mux to the next button.
+// We update buttons one by one so we don't have to wait for the 
+// mux to settle.
 void updateButtons() {
   Button *buttonToUpdate = buttons[nextButtonIndex];
 
@@ -176,17 +229,18 @@ void updateButtons() {
   nextButtonIndex %= 16;
   switchMult.select(nextButtonIndex);
 
-  heldButtons.clear();
+  activeButtons.clear();
     
-  // Add all held buttons to the list
+  // Add all held buttons to the list. 
+  // Or buttons that just stopped being held. 
   for (Button *x: buttons) {
-    if ( x != nullptr && x->held() ) { 
-      heldButtons.push_back(x);
+    if ( x != nullptr && x->held() || x->fallingEdge() ) { 
+      activeButtons.push_back(x);
     }
   }
 
   // Sort them by timestamp
-  std::sort(heldButtons.begin(), heldButtons.end(), 
+  std::sort(activeButtons.begin(), activeButtons.end(), 
     [](Button *a, Button *b) { 
       return a->getLastActivation() < b->getLastActivation(); 
     }
@@ -194,6 +248,7 @@ void updateButtons() {
 }
 
 float hiddenValue = 0;
+float mutationCanary = 0;
 
 void processInput() {
   endlessPot.update();
@@ -204,7 +259,6 @@ void processInput() {
     sequence.setBpm(newBpm);
   }
   
-
   // Hidden value used for... things?
   bool shouldResetHiddenValue = true;
 
@@ -216,10 +270,10 @@ void processInput() {
   }
   Stage &highlightedStage = sequence.getStage(highlightedStageIndex);
   
-  Button *baseButton = heldButtons.size() > 0 ? heldButtons[0] : nullptr;
+  Button *baseButton = activeButtons.size() > 0 ? activeButtons[0] : nullptr;
   Command baseCommand = baseButton != nullptr ? baseButton->_command : NOTHING;
 
-  Button *modifierButton = heldButtons.size() > 1 ? heldButtons[1] : nullptr;
+  Button *modifierButton = activeButtons.size() > 1 ? activeButtons[1] : nullptr;
   Command modifier = modifierButton != nullptr ? modifierButton->_command : NOTHING;
 
   bool isShiftHeld = false;
@@ -235,12 +289,27 @@ void processInput() {
     affectedStages.push_back(&highlightedStage);
   }
 
-  if (baseCommand == PITCH) {
+  if (baseCommand == UNDO) {
+    if (baseButton->risingEdge()) {
+      undo();
+    } 
+  } else if (baseCommand == REDO) {
+    if (baseButton->risingEdge()) {
+      redo();
+    } 
+  } else if (baseCommand == PITCH) {
     shouldSupressCursorRotation = true;
 
     for (auto stage : affectedStages) {
       float newVoltage = stage->output + endlessPot.getAngleDelta() / 180.f;
       stage->output = coerceInRange(newVoltage, 0, 5);
+
+      mutationCanary += endlessPot.getAngleDelta(); // Used to detect if the state mutates
+    }
+
+    if (baseButton->fallingEdge() && mutationCanary != 0) {
+      saveUndoRedoSnapshot();
+      mutationCanary = 0;
     }
   } else if (baseCommand == SKIP) {
     if (baseButton->risingEdge()) {
@@ -250,6 +319,8 @@ void processInput() {
       }
   
       sequence.updateNextStageIndex();
+
+      saveUndoRedoSnapshot();
     }
   } else if (baseCommand == PULSES) {
     shouldSupressCursorRotation = true;
@@ -261,8 +332,14 @@ void processInput() {
       for (auto stage : affectedStages) {
         stage->pulseCount = coerceInRange(stage->pulseCount + (hiddenValue > 0 ? 1 : -1), 1, 8);
       }
+      mutationCanary += (hiddenValue > 0 ? 1 : -1);
 
       hiddenValue = 0;
+    }
+
+    if (baseButton->fallingEdge() && mutationCanary != 0) {
+      saveUndoRedoSnapshot();
+      mutationCanary = 0;
     }
   } else if (baseCommand == GATEMODE) {
     shouldSupressCursorRotation = true;
@@ -274,6 +351,13 @@ void processInput() {
     for (auto stage : affectedStages) {
         stage->targetPulsePipsAngle = wrapDeg(stage->targetPulsePipsAngle + endlessPot.getAngleDelta());
         stage->gateMode = (GateMode)((int)round(wrapDeg(stage->targetPulsePipsAngle) / 90.f) % 4);
+    }
+
+    mutationCanary = (int)round(wrapDeg(affectedStages[0]->targetPulsePipsAngle) / 90.f) % 4;
+    
+    if (baseButton->fallingEdge() && mutationCanary != 0) {
+      saveUndoRedoSnapshot();
+      mutationCanary = 0;
     }
   } else if (baseCommand == SELECT) {
     if (modifier == NOTHING) {
@@ -297,20 +381,27 @@ void processInput() {
       if (lastHighlightedStageIndex != highlightedStageIndex) {
         highlightedStage.isSelected = lastSelectToggleState;
       }
+
+      if (baseButton->fallingEdge()) {
+        saveUndoRedoSnapshot();
+      }
     } else if (modifier == SLIDE) {
       // Select every stage with slide toggled on
       if (modifierButton->risingEdge()) {
         for (size_t i = 0; i < sequence.stageCount(); i++) {
           sequence.getStage(i).isSelected = sequence.getStage(i).shouldSlideIn;
         }
+        
+        saveUndoRedoSnapshot();
       }
     }
   } else if (baseCommand == SLIDE) {
     if (baseButton->risingEdge()) {
-      // Toggle shouldSlideIn
       for (auto stage : affectedStages) {
         stage->shouldSlideIn = !stage->shouldSlideIn;
       }
+
+      saveUndoRedoSnapshot();
     }
   } else if (baseCommand == CLONE) {
     if (baseButton->risingEdge()) {
@@ -328,6 +419,8 @@ void processInput() {
         
         ++rit;
       }
+
+      saveUndoRedoSnapshot();
     }
   } else if (baseCommand == DELETE) {
     if (baseButton->risingEdge()) {
@@ -340,6 +433,8 @@ void processInput() {
         sequence.deleteStage(sequence.indexOfStage(*rit));
         ++rit;
       }
+
+      saveUndoRedoSnapshot();
     }
   } else if (baseCommand == MOVE) {
     shouldResetHiddenValue = false;
@@ -351,6 +446,7 @@ void processInput() {
     // When we move the stages far enough rearrange the sequence
     if (abs(hiddenValue) > degreesPerStage) {
       int direction = (hiddenValue > 0) ? 1 : -1;
+      mutationCanary += direction;
       
       std::vector<size_t> indexesOfStagesToMove;
       for (Stage* stage : affectedStages) {
@@ -364,6 +460,11 @@ void processInput() {
       highlightedStageIndex = wrap((int)highlightedStageIndex + direction, 0, sequence.stageCount());
 
       hiddenValue = 0;
+    }
+
+    if (baseButton->fallingEdge() && mutationCanary != 0) {
+      saveUndoRedoSnapshot();
+      mutationCanary = 0;
     }
   }
 
@@ -379,7 +480,14 @@ void processInput() {
 }
 
 void updateAnimations() {
-  if ((millis() - lastAnimationTickMillis) > 16) {
+  if (didJustLoadSnapshot) {
+    // Skip all animations after loading/undoing/redoing
+    for (size_t i = 0; i < sequence.stageCount(); i++) {
+      sequence.getStage(i).skipAnimation();  
+    }
+    
+    lastAnimationTickMillis = millis();
+  } else if ((millis() - lastAnimationTickMillis) > 16 || lastAnimationTickMillis == 0) {
     lastAnimationTickMillis += 16;
 
     for (size_t i = 0; i < sequence.stageCount(); i++) {
@@ -393,7 +501,7 @@ void updateAnimations() {
       stage.angle = stage.angle + degBetweenAngles(stage.angle, stage.targetAngle) * 0.1;
       stage.radius = lerp(stage.radius, stage.targetRadius, 0.1);
     }
-  }  
+  }
 }
 
 void drawPulsePips(Stage& stage, float angle, Vec2 pos, int8_t currentPulseInStage, GateMode gateMode) {
@@ -561,6 +669,34 @@ void drawStageStrikethrough(Vec2 pos) {
   );
 }
 
+float degreesPerStage() {
+  return 360 / (float)sequence.stageCount();
+}
+
+void updateTargetPositions() {
+  uint defaultStagePositionRadius = 48 + 3 * sequence.stageCount();
+
+  for (size_t i = 0; i < sequence.stageCount(); i++) {
+    Stage& curStage = sequence.getStage(i);
+
+    bool isHighlighted = highlightedStageIndex == i || curStage.isSelected;
+
+    // Update position
+    curStage.targetRadius = defaultStagePositionRadius;
+    curStage.targetRadius += (isHighlighted ? 8 : 0);
+    if (isEditingPosition) {
+      curStage.targetRadius += (isHighlighted ? 4 : -8);
+    }
+
+    curStage.targetAngle = i * degreesPerStage();
+    if (isEditingPosition && isHighlighted) {
+      curStage.targetAngle += hiddenValue;
+      // Skip the animation for a more direct feeling of control
+      curStage.angle = curStage.targetAngle;
+    }
+  }
+}
+
 ////////////////////////////////////////////////////
 ///                   Render                    ////
 ////////////////////////////////////////////////////
@@ -568,7 +704,6 @@ void render() {
   screen.fillSprite(COLOUR_BG);
 
   float targetDegreesPerStage = 360 / (float)sequence.stageCount();
-  uint defaultStagePositionRadius = 48 + 3 * sequence.stageCount();
 
   // Beat Indicator
   if (true) {
@@ -614,21 +749,6 @@ void render() {
     bool isActive = sequence.indexOfActiveStage() == i;
     bool isHighlighted = highlightedStageIndex == i || curStage.isSelected;
 
-    // Update position
-    curStage.targetRadius = defaultStagePositionRadius;
-    curStage.targetRadius += (isHighlighted ? 8 : 0);
-    if (isEditingPosition) {
-      curStage.targetRadius += (isHighlighted ? 4 : -8);
-    }
-
-    curStage.targetAngle = i * targetDegreesPerStage;
-    if (isEditingPosition && isHighlighted) {
-      curStage.targetAngle += hiddenValue;
-      // Skip the animation for a more direct feeling of control
-      curStage.angle = curStage.targetAngle;
-    }
-    
-
     Vec2 stagePos = Vec2::fromPolar(curStage.radius, curStage.angle) + screenCenter;
 
     uint16_t colour;
@@ -667,7 +787,7 @@ void render() {
       }
     }
 
-    drawStageOutput2(curStage.output, colour, stagePos);
+    drawStageOutput(curStage.output, colour, stagePos);
 
     bool isEditingGateModeOfThisStage = isEditingGateMode && (i == highlightedStageIndex || curStage.isSelected);
 
@@ -718,7 +838,7 @@ void render() {
   // }
 
   // Gate
-  drawStageOutput2(sequence.getOutput(), sequence.getGate() ? COLOUR_ACTIVE : COLOUR_SKIPPED, screenCenter);
+  drawStageOutput(sequence.getOutput(), sequence.getGate() ? COLOUR_ACTIVE : COLOUR_SKIPPED, screenCenter);
   
   // FPS
   screen.setTextColor(COLOUR_INACTIVE);
@@ -726,11 +846,11 @@ void render() {
   screen.drawString("fps", screenCenter.x, 24, 2);
 
   // Debug
-  for (int i = 0; i < heldButtons.size(); i++) {
+  for (int i = 0; i < activeButtons.size(); i++) {
     Vec2 pos = Vec2::fromPolar(SCREEN_HALF_WIDTH - 25, 290 - i * 10) + screenCenter;
 
     screen.setTextColor(COLOUR_INACTIVE);
-    screen.drawString(toString(heldButtons[i]->_command), pos.x, pos.y, 2);
+    screen.drawString(toString(activeButtons[i]->_command), pos.x, pos.y, 2);
   }
 
   tft.pushImageDMA(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, screenPtr);

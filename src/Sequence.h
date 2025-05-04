@@ -53,6 +53,12 @@ class Stage {
                 return false;
             }
         }
+
+        void skipAnimation() {
+            radius = targetRadius;
+            angle = targetAngle;
+            pulsePipsAngle = targetPulsePipsAngle;
+        }
 };
 
 class Sequence {
@@ -74,6 +80,8 @@ class Sequence {
             _updateMicrosPerPulse();
             updateNextStageIndex();
         }
+
+        Sequence() : Sequence(0) {}
 
         void addStage() {
             _stages.push_back(Stage());
@@ -328,6 +336,12 @@ class Sequence {
 
         float getBpm() {
             return _bpm;
+        }
+
+        void skipAnimations() {
+            for (size_t i = 0; i < _stages.size(); i++) {
+                _stages[i].skipAnimation();
+            }
         }
     private:
         std::vector<Stage> _stages;
