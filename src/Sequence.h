@@ -24,8 +24,22 @@ bool isPulseActive(uint8_t index, GateMode gateMode) {
     }
 }
 
+class StageDrawInfo {
+    public:
+        float output = 0;
+        float pulseCount = 0;
+        float pulsePipAngle = 0;
+        float isSkipped = 0;
+        float isSelected = 0;
+        float shouldSlideIn = 0;
+
+        float radius = 0;
+        float angle = 0;
+};
+
 class Stage {
     public:
+        uint16_t id;
         float output = 1;
         uint8_t pulseCount = 4;
         GateMode gateMode = EACH;
@@ -34,11 +48,6 @@ class Stage {
         bool shouldSlideIn = false;
 
         // Render stuff
-        float radius = 0;
-        float targetRadius = 0;
-        float angle = 0;
-        float targetAngle = 0;
-
         float pulsePipsAngle = 0;
         float targetPulsePipsAngle = 0;
 
@@ -54,11 +63,7 @@ class Stage {
             }
         }
 
-        void skipAnimation() {
-            radius = targetRadius;
-            angle = targetAngle;
-            pulsePipsAngle = targetPulsePipsAngle;
-        }
+        Stage(uint16_t id) : id(id) {}
 };
 
 class Sequence {
@@ -84,7 +89,7 @@ class Sequence {
         Sequence() : Sequence(0) {}
 
         void addStage() {
-            _stages.push_back(Stage());
+            _stages.push_back(Stage(getNewStageId()));
         }
 
         void swapStages(size_t indexA, size_t indexB) {
@@ -338,10 +343,13 @@ class Sequence {
             return _bpm;
         }
 
-        void skipAnimations() {
-            for (size_t i = 0; i < _stages.size(); i++) {
-                _stages[i].skipAnimation();
-            }
+        uint16_t getNewStageId() {
+            auto id = _nextId;
+
+            _nextId++;
+            _nextId %= MAX_STAGES;
+
+            return id;
         }
     private:
         std::vector<Stage> _stages;
@@ -356,7 +364,7 @@ class Sequence {
         float _pulseAnticipation; // How close are we to the next pulse
         float _slideProgress; // How close are we sliding between notes
         uint8_t _currentPulseInStage = 0; // How many pulses have occurred for the current stage
-
+        uint16_t _nextId = 0;
         float _output;
         bool _gate = false;
 

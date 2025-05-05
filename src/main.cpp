@@ -37,6 +37,7 @@ uint16_t* screenPtr;
 const Vec2 screenCenter = Vec2(SCREEN_HALF_WIDTH, SCREEN_HALF_HEIGHT);
 
 Sequence sequence = Sequence(6);
+StageDrawInfo renderableStages[MAX_STAGES];
 const uint8_t UNDO_REDO_SIZE = 24;
 Sequence history[UNDO_REDO_SIZE];
 uint8_t curPosInHistory = 0;
@@ -90,7 +91,6 @@ void render();
 void saveUndoRedoSnapshot();
 void processInput();
 void updateAnimations();
-void updateTargetPositions();
 
 void setup() {
   history[0] = sequence;
@@ -133,7 +133,6 @@ void loop() {
     lastGateValue = sequence.getGate();
   }
 
-  updateTargetPositions();
   updateAnimations();
 
   // Gate LED
@@ -177,9 +176,6 @@ void saveUndoRedoSnapshot() {
   history[curPosInHistory] = sequence;
 
   indexOfNewestSnapshot = curPosInHistory;
-
-  // Sanitize the stored sequence
-  history[curPosInHistory].skipAnimations();
 
   // If the ring buffer has caught up to it's tail, update the location of the tail
   if (indexOfNewestSnapshot == indexOfOldestSnapshot) {
@@ -414,6 +410,7 @@ void processInput() {
         // Copy everything about the stage, except deselect it
         Stage newStage = **rit;
         newStage.isSelected = false;
+        newStage.id = sequence.getNewStageId();
 
         sequence.insertStage(sequence.indexOfStage(*rit) + 1, newStage);
         
@@ -476,31 +473,6 @@ void processInput() {
 
   if (shouldResetHiddenValue) {
     hiddenValue = 0;
-  }
-}
-
-void updateAnimations() {
-  if (didJustLoadSnapshot) {
-    // Skip all animations after loading/undoing/redoing
-    for (size_t i = 0; i < sequence.stageCount(); i++) {
-      sequence.getStage(i).skipAnimation();  
-    }
-    
-    lastAnimationTickMillis = millis();
-  } else if ((millis() - lastAnimationTickMillis) > 16 || lastAnimationTickMillis == 0) {
-    lastAnimationTickMillis += 16;
-
-    for (size_t i = 0; i < sequence.stageCount(); i++) {
-      Stage& stage = sequence.getStage(i);
-
-      if (!isEditingGateMode) {
-        stage.targetPulsePipsAngle = stage.gateMode * 90;
-      }
-
-      stage.pulsePipsAngle = stage.pulsePipsAngle + degBetweenAngles(stage.pulsePipsAngle, stage.targetPulsePipsAngle) * 0.25;
-      stage.angle = stage.angle + degBetweenAngles(stage.angle, stage.targetAngle) * 0.1;
-      stage.radius = lerp(stage.radius, stage.targetRadius, 0.1);
-    }
   }
 }
 
@@ -673,26 +645,48 @@ float degreesPerStage() {
   return 360 / (float)sequence.stageCount();
 }
 
-void updateTargetPositions() {
-  uint defaultStagePositionRadius = 48 + 3 * sequence.stageCount();
+void updateAnimations() {
+  if ((millis() - lastAnimationTickMillis) > 16 || lastAnimationTickMillis == 0) {
+    lastAnimationTickMillis += 16;
 
-  for (size_t i = 0; i < sequence.stageCount(); i++) {
-    Stage& curStage = sequence.getStage(i);
+    uint defaultStagePositionRadius = 48 + 3 * sequence.stageCount();
 
-    bool isHighlighted = highlightedStageIndex == i || curStage.isSelected;
+    for (size_t i = 0; i < sequence.stageCount(); i++) {
+      Stage& stage = sequence.getStage(i);
+      StageDrawInfo& stageDrawInfo = renderableStages[stage.id];
+      bool isHighlighted = highlightedStageIndex == i || stage.isSelected;
 
-    // Update position
-    curStage.targetRadius = defaultStagePositionRadius;
-    curStage.targetRadius += (isHighlighted ? 8 : 0);
-    if (isEditingPosition) {
-      curStage.targetRadius += (isHighlighted ? 4 : -8);
-    }
+      // Update position
+      float targetRadius = defaultStagePositionRadius;
+      targetRadius += (isHighlighted ? 8 : 0);
+      if (isEditingPosition) {
+        targetRadius += (isHighlighted ? 4 : -8);
+      }
 
-    curStage.targetAngle = i * degreesPerStage();
-    if (isEditingPosition && isHighlighted) {
-      curStage.targetAngle += hiddenValue;
-      // Skip the animation for a more direct feeling of control
-      curStage.angle = curStage.targetAngle;
+      float targetAngle = i * degreesPerStage();
+      if (isEditingPosition && isHighlighted) {
+        stageDrawInfo.angle = targetAngle + hiddenValue;
+      }
+
+      if (!isEditingGateMode) {
+        stage.targetPulsePipsAngle = stage.gateMode * 90;
+      }
+
+      stage.pulsePipsAngle = stage.pulsePipsAngle + degBetweenAngles(stage.pulsePipsAngle, stage.targetPulsePipsAngle) * 0.25;
+
+      if (isEditingPosition && isHighlighted) {
+        stageDrawInfo.angle = targetAngle + hiddenValue;
+      } else {
+        stageDrawInfo.angle = stageDrawInfo.angle + degBetweenAngles(stageDrawInfo.angle, targetAngle) * 0.1;
+      }
+
+      stageDrawInfo.radius = lerp(stageDrawInfo.radius, targetRadius, 0.1);
+      
+      if (pitchBtn.held()) {
+        stageDrawInfo.output = stage.output;
+      } else {
+        stageDrawInfo.output = lerp(stageDrawInfo.output, stage.output, 0.1);
+      }
     }
   }
 }
@@ -709,20 +703,22 @@ void render() {
   if (true) {
     size_t nextStageIndex = sequence.getNextStageIndex();
     Stage &activeStage = sequence.getActiveStage();
+    StageDrawInfo& activeStageDrawInfo = renderableStages[activeStage.id];
     Stage &nextStage = sequence.getStage(nextStageIndex);
-    float angle = activeStage.angle;
-    float polarRadius = activeStage.radius;
+    StageDrawInfo& nextStageDrawInfo = renderableStages[nextStage.id];
+    float angle = activeStageDrawInfo.angle;
+    float polarRadius = nextStageDrawInfo.radius;
     float progress = powf(sequence.getPulseAnticipation(), 2);
 
     if (sequence.isLastPulseOfStage()) {
-      auto degToNextStage = degBetweenAngles(angle, nextStage.angle);
+      auto degToNextStage = degBetweenAngles(angle, nextStageDrawInfo.angle);
 
       if (degToNextStage < 0) {
         degToNextStage += 360; 
       }
 
       angle += degToNextStage * powf(progress, 2);
-      polarRadius = lerp(activeStage.radius, nextStage.radius, powf(progress, 2));
+      polarRadius = lerp(activeStageDrawInfo.radius, nextStageDrawInfo.radius, powf(progress, 2));
     } 
     
     auto pos = Vec2::fromPolar(polarRadius, angle) + screenCenter;
@@ -745,11 +741,12 @@ void render() {
   // Stages
   for (size_t i = 0; i < sequence.stageCount(); i++) {
     Stage& curStage = sequence.getStage(i);
+    StageDrawInfo& stageDrawInfo = renderableStages[curStage.id];
 
     bool isActive = sequence.indexOfActiveStage() == i;
     bool isHighlighted = highlightedStageIndex == i || curStage.isSelected;
 
-    Vec2 stagePos = Vec2::fromPolar(curStage.radius, curStage.angle) + screenCenter;
+    Vec2 stagePos = Vec2::fromPolar(stageDrawInfo.radius, stageDrawInfo.angle) + screenCenter;
 
     uint16_t colour;
     if (isHighlighted) {
@@ -764,13 +761,13 @@ void render() {
     
     // Slide indicator
     if (curStage.shouldSlideIn) {
-      float endAngle = wrapDeg(180 + curStage.angle);
+      float endAngle = wrapDeg(180 + stageDrawInfo.angle);
       float degToStartAngle = -targetDegreesPerStage * 0.75f;
       float startAngle = wrapDeg(endAngle + degToStartAngle);
 
       screen.drawArc(
         screenCenter.x, screenCenter.y, // Position
-        curStage.radius + 1, curStage.radius - 1, // Radius, Inner Radius
+        stageDrawInfo.radius + 1, stageDrawInfo.radius - 1, // Radius, Inner Radius
         startAngle, endAngle, // Arc start & end 
         COLOUR_SKIPPED, COLOUR_BG, // Colour, AA Colour
         false // Smoothing
@@ -779,7 +776,7 @@ void render() {
       if (isActive && sequence.isSliding()) {
         screen.drawArc(
           screenCenter.x, screenCenter.y, // Position
-          curStage.radius + 1, curStage.radius - 1, // Radius, Inner Radius
+          stageDrawInfo.radius + 1, stageDrawInfo.radius - 1, // Radius, Inner Radius
           startAngle, wrapDeg(startAngle - degToStartAngle * sequence.getPulseAnticipation()), // Arc start & end 
           COLOUR_ACTIVE, COLOUR_BG, // Colour, AA Colour
           false // Smoothing
@@ -787,31 +784,31 @@ void render() {
       }
     }
 
-    drawStageOutput(curStage.output, colour, stagePos);
+    drawStageOutput(stageDrawInfo.output, colour, stagePos);
 
     bool isEditingGateModeOfThisStage = isEditingGateMode && (i == highlightedStageIndex || curStage.isSelected);
 
     if (curStage.gateMode == EACH || isEditingGateModeOfThisStage) {
-      drawPulses(curStage, curStage.angle + curStage.pulsePipsAngle, stagePos, isActive ? sequence.getCurrentPulseInStage() : -1, EACH);
+      drawPulses(curStage, stageDrawInfo.angle + curStage.pulsePipsAngle, stagePos, isActive ? sequence.getCurrentPulseInStage() : -1, EACH);
     }
 
     if (curStage.gateMode == HELD || isEditingGateModeOfThisStage) {
-      drawPulses(curStage, curStage.angle - 90 + curStage.pulsePipsAngle, stagePos, isActive ? sequence.getCurrentPulseInStage() : -1, HELD);
+      drawPulses(curStage, stageDrawInfo.angle - 90 + curStage.pulsePipsAngle, stagePos, isActive ? sequence.getCurrentPulseInStage() : -1, HELD);
     }
 
     if (curStage.gateMode == FIRST || isEditingGateModeOfThisStage) {
-      drawPulses(curStage, curStage.angle - 180 + curStage.pulsePipsAngle, stagePos, isActive ? sequence.getCurrentPulseInStage() : -1, FIRST);
+      drawPulses(curStage, stageDrawInfo.angle - 180 + curStage.pulsePipsAngle, stagePos, isActive ? sequence.getCurrentPulseInStage() : -1, FIRST);
     }
 
     if (curStage.gateMode == NONE || isEditingGateModeOfThisStage) {
-      drawPulses(curStage, curStage.angle - 270 + curStage.pulsePipsAngle, stagePos, isActive ? sequence.getCurrentPulseInStage() : -1, NONE);
+      drawPulses(curStage, stageDrawInfo.angle - 270 + curStage.pulsePipsAngle, stagePos, isActive ? sequence.getCurrentPulseInStage() : -1, NONE);
     }
 
     if (curStage.isSkipped) { drawStageStrikethrough(stagePos); }
 
     // Selected indicator
     if (curStage.isSelected) {
-      Vec2 selectionPipPos = Vec2::fromPolar(curStage.radius + 16, curStage.angle) + screenCenter;
+      Vec2 selectionPipPos = Vec2::fromPolar(stageDrawInfo.radius + 16, stageDrawInfo.angle) + screenCenter;
 
       screen.fillCircle(
         selectionPipPos.x, selectionPipPos.y, // Position,
