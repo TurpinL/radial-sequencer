@@ -76,7 +76,6 @@ Multiplexer switchLedMult = Multiplexer(D8, D7, D6, D5);
 float lastHighlightedStageIndicatorAngle = 0;
 uint8_t highlightedStageIndex = 0;
 bool lastSelectToggleState = true;
-bool isEditingGateMode = false;
 bool isEditingPosition = false;
 bool didJustLoadSnapshot = false;
 
@@ -243,6 +242,47 @@ void updateButtons() {
   );
 }
 
+class GateModeButtonHandler {
+  private:
+    bool _isEditingGateMode = false;
+    bool hasModified = false;
+    float foo = 0;
+
+  public:
+    void handle(Button &button, std::vector<Stage*> &affectedStages) {
+      if (button.risingEdge()) {
+        _isEditingGateMode = true;
+      }
+
+      foo += endlessPot.getAngleDelta();
+
+      for (auto stage : affectedStages) {
+        stage->pulsePipsAngle = wrapDeg(stage->pulsePipsAngle + endlessPot.getAngleDelta());
+        stage->gateMode = (GateMode)((int)round(wrapDeg(stage->pulsePipsAngle) / 90.f) % 4);
+      }
+
+      hasModified = (int)round(wrapDeg(foo) / 90.f) % 4;
+      
+      if (button.fallingEdge()) {
+        if (hasModified != 0) {
+          saveUndoRedoSnapshot();
+        }
+        hasModified = 0;
+        _isEditingGateMode = false;
+      }
+    }
+
+    bool shouldSuppressCursorRotation() {
+      return true;
+    }
+
+    bool isEditingGateMode() {
+      return _isEditingGateMode;
+    }
+};
+
+GateModeButtonHandler gateModeButtonHandler;
+
 float hiddenValue = 0;
 float mutationCanary = 0;
 
@@ -274,7 +314,6 @@ void processInput() {
 
   bool isShiftHeld = false;
   bool shouldSupressCursorRotation = false;
-  isEditingGateMode = false;
   isEditingPosition = false;
 
   std::vector<Stage*> selectedStages = sequence.getSelectedStages();
@@ -286,6 +325,7 @@ void processInput() {
   }
 
   if (baseCommand == UNDO) {
+  
     if (baseButton->risingEdge()) {
       undo();
     } 
@@ -338,23 +378,8 @@ void processInput() {
       mutationCanary = 0;
     }
   } else if (baseCommand == GATEMODE) {
-    shouldSupressCursorRotation = true;
-    shouldResetHiddenValue = false;
-    isEditingGateMode = true;
-
-    hiddenValue += endlessPot.getAngleDelta();
-
-    for (auto stage : affectedStages) {
-        stage->targetPulsePipsAngle = wrapDeg(stage->targetPulsePipsAngle + endlessPot.getAngleDelta());
-        stage->gateMode = (GateMode)((int)round(wrapDeg(stage->targetPulsePipsAngle) / 90.f) % 4);
-    }
-
-    mutationCanary = (int)round(wrapDeg(affectedStages[0]->targetPulsePipsAngle) / 90.f) % 4;
-    
-    if (baseButton->fallingEdge() && mutationCanary != 0) {
-      saveUndoRedoSnapshot();
-      mutationCanary = 0;
-    }
+    gateModeButtonHandler.handle(*baseButton, affectedStages);
+    shouldSupressCursorRotation = gateModeButtonHandler.shouldSuppressCursorRotation();
   } else if (baseCommand == SELECT) {
     if (modifier == NOTHING) {
       if (baseButton->risingEdge()) {
@@ -668,11 +693,13 @@ void updateAnimations() {
         stageDrawInfo.angle = targetAngle + hiddenValue;
       }
 
-      if (!isEditingGateMode) {
-        stage.targetPulsePipsAngle = stage.gateMode * 90;
+      bool isEditingGateModeOfThisStage = gateModeButtonHandler.isEditingGateMode() && (i == highlightedStageIndex || stage.isSelected);
+      if (isEditingGateModeOfThisStage) {
+        stageDrawInfo.pulsePipsAngle = stage.pulsePipsAngle;
+      } else {
+        stage.pulsePipsAngle = stage.gateMode * 90;
+        stageDrawInfo.pulsePipsAngle = stageDrawInfo.pulsePipsAngle + degBetweenAngles(stageDrawInfo.pulsePipsAngle, stage.pulsePipsAngle) * 0.1;
       }
-
-      stage.pulsePipsAngle = stage.pulsePipsAngle + degBetweenAngles(stage.pulsePipsAngle, stage.targetPulsePipsAngle) * 0.25;
 
       if (isEditingPosition && isHighlighted) {
         stageDrawInfo.angle = targetAngle + hiddenValue;
@@ -786,22 +813,23 @@ void render() {
 
     drawStageOutput(stageDrawInfo.output, colour, stagePos);
 
-    bool isEditingGateModeOfThisStage = isEditingGateMode && (i == highlightedStageIndex || curStage.isSelected);
+    bool isEditingGateModeOfThisStage = gateModeButtonHandler.isEditingGateMode() && (i == highlightedStageIndex || curStage.isSelected);
+    bool arePulsePipsAnimating = abs(degBetweenAngles(stageDrawInfo.pulsePipsAngle, curStage.pulsePipsAngle)) > 10;
 
-    if (curStage.gateMode == EACH || isEditingGateModeOfThisStage) {
-      drawPulses(curStage, stageDrawInfo.angle + curStage.pulsePipsAngle, stagePos, isActive ? sequence.getCurrentPulseInStage() : -1, EACH);
+    if (curStage.gateMode == EACH || isEditingGateModeOfThisStage || arePulsePipsAnimating) {
+      drawPulses(curStage, stageDrawInfo.angle + stageDrawInfo.pulsePipsAngle, stagePos, isActive ? sequence.getCurrentPulseInStage() : -1, EACH);
     }
 
-    if (curStage.gateMode == HELD || isEditingGateModeOfThisStage) {
-      drawPulses(curStage, stageDrawInfo.angle - 90 + curStage.pulsePipsAngle, stagePos, isActive ? sequence.getCurrentPulseInStage() : -1, HELD);
+    if (curStage.gateMode == HELD || isEditingGateModeOfThisStage || arePulsePipsAnimating) {
+      drawPulses(curStage, stageDrawInfo.angle - 90 + stageDrawInfo.pulsePipsAngle, stagePos, isActive ? sequence.getCurrentPulseInStage() : -1, HELD);
     }
 
-    if (curStage.gateMode == FIRST || isEditingGateModeOfThisStage) {
-      drawPulses(curStage, stageDrawInfo.angle - 180 + curStage.pulsePipsAngle, stagePos, isActive ? sequence.getCurrentPulseInStage() : -1, FIRST);
+    if (curStage.gateMode == FIRST || isEditingGateModeOfThisStage || arePulsePipsAnimating) {
+      drawPulses(curStage, stageDrawInfo.angle - 180 + stageDrawInfo.pulsePipsAngle, stagePos, isActive ? sequence.getCurrentPulseInStage() : -1, FIRST);
     }
 
-    if (curStage.gateMode == NONE || isEditingGateModeOfThisStage) {
-      drawPulses(curStage, stageDrawInfo.angle - 270 + curStage.pulsePipsAngle, stagePos, isActive ? sequence.getCurrentPulseInStage() : -1, NONE);
+    if (curStage.gateMode == NONE || isEditingGateModeOfThisStage || arePulsePipsAnimating) {
+      drawPulses(curStage, stageDrawInfo.angle - 270 + stageDrawInfo.pulsePipsAngle, stagePos, isActive ? sequence.getCurrentPulseInStage() : -1, NONE);
     }
 
     if (curStage.isSkipped) { drawStageStrikethrough(stagePos); }

@@ -28,7 +28,7 @@ class StageDrawInfo {
     public:
         float output = 0;
         float pulseCount = 0;
-        float pulsePipAngle = 0;
+        float pulsePipsAngle = 0;
         float isSkipped = 0;
         float isSelected = 0;
         float shouldSlideIn = 0;
@@ -49,7 +49,6 @@ class Stage {
 
         // Render stuff
         float pulsePipsAngle = 0;
-        float targetPulsePipsAngle = 0;
 
         bool isPulseActive(uint8_t index) {
             if (isSkipped) return false;
