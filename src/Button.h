@@ -20,7 +20,7 @@ enum Command {
     NOTHING
 };
 
-String toString(Command command) {
+inline String toString(Command command) {
     switch(command) {
         case PITCH:    return String("Pitch ");
         case SKIP:     return String("Skip  ");
@@ -96,9 +96,14 @@ class Button {
         unsigned long getLastActivation() {
             return _lastActivation;
         }
+
+        Command getCommand() {
+            return _command;
+        }
+
         Command _command;
-        uint8_t _state = 0;
     private:
+        uint8_t _state = 0;
         uint8_t _lastState = 0;
         unsigned long _lastActivation = 0;
         bool _wasDoubleTapped = false;

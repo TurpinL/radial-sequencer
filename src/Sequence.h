@@ -6,6 +6,7 @@
 #include <Adafruit_TinyUSB.h>
 #include <MIDI.h>
 #include <algorithm>
+#include "Utils.h"
 
 enum GateMode {
     EACH,
@@ -14,7 +15,7 @@ enum GateMode {
     NONE
 };
 
-bool isPulseActive(uint8_t index, GateMode gateMode) {
+inline bool isPulseActive(uint8_t index, GateMode gateMode) {
     if (gateMode == HELD || gateMode == EACH) {
         return true;
     } else if (gateMode == FIRST && index == 0) {
@@ -77,7 +78,7 @@ class Sequence {
             for (int i = 0; i < stageCount; i++) {
                 addStage();
                 _stages.back().pulseCount = (rand() % 2) + 1;
-                _stages.back().output = (rand() % 500) / 100.f;//-((rand() % 100) / 50.f) + 1;
+                _stages.back().output = (rand() % 100) / 50.f;//-((rand() % 100) / 50.f) + 1;
                 _stages.back().gateMode = EACH;
             }
 

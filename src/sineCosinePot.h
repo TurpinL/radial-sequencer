@@ -1,7 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
-#include "utils.h"
+#include "Utils.h"
 
 const uint adcChannelToPin[3] = {26, 27, 28};
 
