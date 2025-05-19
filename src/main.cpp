@@ -8,12 +8,14 @@
 #include "Multiplexer.h"
 #include "ButtonHandlers/GateModeButtonHandler.hpp"
 #include "ButtonHandlers/PitchButtonHandler.hpp"
+#include "ButtonHandlers/SelectButtonHandler.hpp"
+#include "ButtonHandlers/IButtonHandler.hpp"
 #include <set>
 #include <algorithm>
 #include <Adafruit_TinyUSB.h>
 #include <MIDI.h>
 #include "SelectionState.hpp"
-#include "ButtonHandlers/SelectButtonHandler.hpp"
+#include "UserInputState.hpp"
 
 #define SCREEN_WIDTH 240
 #define SCREEN_HALF_WIDTH 120
@@ -72,6 +74,12 @@ std::vector<Button*> activeButtons; // Buttons that are held, or fallingEdge == 
 GateModeButtonHandler gateModeButtonHandler;
 SelectButtonHandler selectButtonHandler;
 PitchButtonHandler pitchButtonHandler;
+
+std::map<Command, IButtonHandler*> buttonHandlers = {
+  {GATEMODE, &gateModeButtonHandler},
+  {SELECT, &selectButtonHandler},
+  {PITCH, &pitchButtonHandler}
+};
 
 Multiplexer switchMult = Multiplexer(D13, D12, D11, D10);
 Multiplexer switchLedMult = Multiplexer(D8, D7, D6, D5);
@@ -216,6 +224,8 @@ void processInput() {
   endlessPot.update();
   updateButtons();
 
+  UserInputState userInputState = UserInputState(&endlessPot, activeButtons);
+
   auto newBpm = (analogRead(A2) / 1024.f) * 100 + 60;
   if (abs(sequence->getBpm() - newBpm) > 2) {
     sequence->setBpm(newBpm);
@@ -232,30 +242,26 @@ void processInput() {
   }
 
   SelectionState selectionState = SelectionState(*sequence, highlightedStageIndex); 
-  
-  Button *baseButton = activeButtons.size() > 0 ? activeButtons[0] : nullptr;
-  Command baseCommand = baseButton != nullptr ? baseButton->_command : NOTHING;
-
-  Button *modifierButton = activeButtons.size() > 1 ? activeButtons[1] : nullptr;
-  Command modifier = modifierButton != nullptr ? modifierButton->_command : NOTHING;
 
   bool isShiftHeld = false;
   bool shouldSupressCursorRotation = false;
   isEditingPosition = false;
 
-  if (baseCommand == UNDO) {
-    if (baseButton->risingEdge()) {
+  if (buttonHandlers.find(userInputState.getBaseCommand()) != buttonHandlers.end()) {
+    IButtonHandler &handler = *buttonHandlers[userInputState.getBaseCommand()];
+
+    handler.handle(userInputState, undoRedoManager, selectionState);
+    shouldSupressCursorRotation = handler.shouldSuppressCursorRotation();
+  } else if (userInputState.getBaseCommand() == UNDO) {
+    if (userInputState.getBaseButton().risingEdge()) {
       undoRedoManager.undo();
     } 
-  } else if (baseCommand == REDO) {
-    if (baseButton->risingEdge()) {
+  } else if (userInputState.getBaseCommand() == REDO) {
+    if (userInputState.getBaseButton().risingEdge()) {
       undoRedoManager.redo();
     } 
-  } else if (baseCommand == PITCH) {
-    pitchButtonHandler.handle(*baseButton, endlessPot, undoRedoManager, selectionState);
-    shouldSupressCursorRotation = pitchButtonHandler.shouldSuppressCursorRotation();
-  } else if (baseCommand == SKIP) {
-    if (baseButton->risingEdge()) {
+  } else if (userInputState.getBaseCommand() == SKIP) {
+    if (userInputState.getBaseButton().risingEdge()) {
       // Toggle isSkipped
       for (auto stage : selectionState.getAffectedStages()) {
         stage->isSkipped = !stage->isSkipped;
@@ -265,7 +271,7 @@ void processInput() {
 
       undoRedoManager.saveUndoRedoSnapshot();
     }
-  } else if (baseCommand == PULSES) {
+  } else if (userInputState.getBaseCommand() == PULSES) {
     shouldSupressCursorRotation = true;
     shouldResetHiddenValue = false;
 
@@ -280,26 +286,20 @@ void processInput() {
       hiddenValue = 0;
     }
 
-    if (baseButton->fallingEdge() && mutationCanary != 0) {
+    if (userInputState.getBaseButton().fallingEdge() && mutationCanary != 0) {
       undoRedoManager.saveUndoRedoSnapshot();
       mutationCanary = 0;
     }
-  } else if (baseCommand == GATEMODE) {
-    gateModeButtonHandler.handle(*baseButton, endlessPot, undoRedoManager, selectionState);
-    shouldSupressCursorRotation = gateModeButtonHandler.shouldSuppressCursorRotation();
-  } else if (baseCommand == SELECT) {
-    selectButtonHandler.handle(*baseButton, modifierButton, endlessPot, undoRedoManager, selectionState);
-    shouldSupressCursorRotation = selectButtonHandler.shouldSuppressCursorRotation();
-  } else if (baseCommand == SLIDE) {
-    if (baseButton->risingEdge()) {
+  } else if (userInputState.getBaseCommand() == SLIDE) {
+    if (userInputState.getBaseButton().risingEdge()) {
       for (auto stage : selectionState.getAffectedStages()) {
         stage->shouldSlideIn = !stage->shouldSlideIn;
       }
 
       undoRedoManager.saveUndoRedoSnapshot();
     }
-  } else if (baseCommand == CLONE) {
-    if (baseButton->risingEdge()) {
+  } else if (userInputState.getBaseCommand() == CLONE) {
+    if (userInputState.getBaseButton().risingEdge()) {
       // Iterate from the end to the beginning because deleting 
       // stages moves around the data in the stages vector causing 
       // the pointers in affected stages to point to the wrong stage. 
@@ -318,8 +318,8 @@ void processInput() {
 
       undoRedoManager.saveUndoRedoSnapshot();
     }
-  } else if (baseCommand == DELETE) {
-    if (baseButton->risingEdge()) {
+  } else if (userInputState.getBaseCommand() == DELETE) {
+    if (userInputState.getBaseButton().risingEdge()) {
       // Iterate from the end to the beginning because deleting 
       // stages moves around the data in the stages vector causing 
       // the pointers in affected stages to point to the wrong stage. 
@@ -332,7 +332,7 @@ void processInput() {
 
       undoRedoManager.saveUndoRedoSnapshot();
     }
-  } else if (baseCommand == MOVE) {
+  } else if (userInputState.getBaseCommand() == MOVE) {
     shouldResetHiddenValue = false;
     isEditingPosition = true;
 
@@ -358,7 +358,7 @@ void processInput() {
       hiddenValue = 0;
     }
 
-    if (baseButton->fallingEdge() && mutationCanary != 0) {
+    if (userInputState.getBaseButton().fallingEdge() && mutationCanary != 0) {
       undoRedoManager.saveUndoRedoSnapshot();
       mutationCanary = 0;
     }

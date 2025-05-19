@@ -1,24 +1,17 @@
 #pragma once
 
-#include "../Utils.h"
-#include "../Button.h"
-#include "../Sequence.h"
-#include "../SineCosinePot.h"
-#include "../UndoRedoManager.h"
-#include "../SelectionState.hpp"
+#include "IButtonHandler.hpp"
 
-class SelectButtonHandler {
-    public:
-        void handle(
-            Button &button, 
-            Button *modifier, 
-            SineCosinePot &endlessPot, 
-            UndoRedoManager &undoRedoManager, 
-            SelectionState &selectionState
-        );
-    
-        bool shouldSuppressCursorRotation() { return false; };
+class SelectButtonHandler : public IButtonHandler {
+public:
+    void handle(
+        UserInputState &userInputState, 
+        UndoRedoManager &undoRedoManager, 
+        SelectionState &selectionState
+    ) override;
 
-    private:
-        bool _lastSelectToggleState = false;
-  };
+    bool shouldSuppressCursorRotation() const override { return false; };
+
+private:
+    bool _lastSelectToggleState = false;
+};

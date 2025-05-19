@@ -1,23 +1,17 @@
 #pragma once
 
-#include "../Utils.h"
-#include "../Button.h"
-#include "../Sequence.h"
-#include "../SineCosinePot.h"
-#include "../UndoRedoManager.h"
-#include "../SelectionState.hpp"
+#include "IButtonHandler.hpp"
 
-class PitchButtonHandler {
-    public:
-        void handle(
-            Button &button, 
-            SineCosinePot &endlessPot, 
-            UndoRedoManager &undoRedoManager, 
-            SelectionState &selectionState
-        );
-  
-        bool shouldSuppressCursorRotation() { return true; };
+class PitchButtonHandler : public IButtonHandler {
+public:
+    void handle(
+        UserInputState &userInputState, 
+        UndoRedoManager &undoRedoManager, 
+        SelectionState &selectionState
+    ) override;
 
-    private:
-        float _pitchChange = 0; // Used to detect if the state has been mutated
+    bool shouldSuppressCursorRotation() const override { return true; };
+
+private:
+    float _pitchChange = 0; // Used to detect if the state has been mutated
 };

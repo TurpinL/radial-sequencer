@@ -1,19 +1,18 @@
 #include "PitchButtonHandler.hpp"
 
 void PitchButtonHandler::handle(
-    Button &button, 
-    SineCosinePot &endlessPot, 
+    UserInputState &userInputState, 
     UndoRedoManager &undoRedoManager, 
     SelectionState &selectionState
 ) {
     for (auto stage : selectionState.getAffectedStages()) {
-        float newVoltage = stage->output + endlessPot.getAngleDelta() / 360.f;
+        float newVoltage = stage->output + userInputState.getAngleDelta() / 360.f;
         stage->output = coerceInRange(newVoltage, 0, 2);
     }
 
-    _pitchChange += endlessPot.getAngleDelta();
+    _pitchChange += userInputState.getAngleDelta();
       
-    if (button.fallingEdge()) {
+    if (userInputState.getBaseButton().fallingEdge()) {
         if (_pitchChange != 0) {
             undoRedoManager.saveUndoRedoSnapshot();
         }

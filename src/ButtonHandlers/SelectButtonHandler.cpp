@@ -1,17 +1,15 @@
 #include "SelectButtonHandler.hpp"
 
 void SelectButtonHandler::handle(
-    Button &button,
-    Button *modifier, 
-    SineCosinePot &endlessPot, 
+    UserInputState &userInputState, 
     UndoRedoManager &undoRedoManager, 
     SelectionState &selectionState
 ) {
     Sequence *sequence = undoRedoManager.getSequence();
 
-    if (modifier == nullptr) {
-        if (button.risingEdge()) {
-            if (button.doubleTapped()) { 
+    if (userInputState.getModifierCommand() == NOTHING) {
+        if (userInputState.getBaseButton().risingEdge()) {
+            if (userInputState.getBaseButton().doubleTapped()) { 
                 // Select all or clear selection on double tap
                 bool isHighlightedStageTheOnlySelectedStage = (selectionState.getSelectedStages().size() == 1 && selectionState.getHighlightedStage()->isSelected);
                 bool shouldSelectStages = selectionState.getSelectedStages().size() == 0 || isHighlightedStageTheOnlySelectedStage;
@@ -29,12 +27,12 @@ void SelectButtonHandler::handle(
         // Select multiple stages as you turn the knob
         selectionState.getHighlightedStage()->isSelected = _lastSelectToggleState;
   
-        if (button.fallingEdge()) {
+        if (userInputState.getBaseButton().fallingEdge()) {
             undoRedoManager.saveUndoRedoSnapshot();
         }
-    } else if (modifier->getCommand() == SLIDE) {
+    } else if (userInputState.getModifierCommand() == SLIDE) {
         // Select every stage with slide toggled on
-        if (modifier->risingEdge()) {
+        if (userInputState.getModifierButton().risingEdge()) {
             for (size_t i = 0; i < sequence->stageCount(); i++) {
             sequence->getStage(i).isSelected = sequence->getStage(i).shouldSlideIn;
             }

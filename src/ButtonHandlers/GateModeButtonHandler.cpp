@@ -1,25 +1,24 @@
 #include "GateModeButtonHandler.hpp"
 
 void GateModeButtonHandler::handle(
-    Button &button, 
-    SineCosinePot &endlessPot, 
+    UserInputState &userInputState, 
     UndoRedoManager &undoRedoManager, 
     SelectionState &selectionState
 ) {
-    if (button.risingEdge()) {
+    if (userInputState.getBaseButton().risingEdge()) {
         _isEditingGateMode = true;
     }
 
-    _foo += endlessPot.getAngleDelta();
+    _foo += userInputState.getAngleDelta();
 
     for (auto stage : selectionState.getAffectedStages()) {
-        stage->pulsePipsAngle = wrapDeg(stage->pulsePipsAngle + endlessPot.getAngleDelta());
+        stage->pulsePipsAngle = wrapDeg(stage->pulsePipsAngle + userInputState.getAngleDelta());
         stage->gateMode = (GateMode)((int)round(wrapDeg(stage->pulsePipsAngle) / 90.f) % 4);
     }
 
     bool hasModified = (int)round(wrapDeg(_foo) / 90.f) % 4;
       
-    if (button.fallingEdge()) {
+    if (userInputState.getBaseButton().fallingEdge()) {
         if (hasModified != 0) {
             undoRedoManager.saveUndoRedoSnapshot();
         }
