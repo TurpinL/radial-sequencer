@@ -11,7 +11,8 @@ public:
     ) override;
 
     bool shouldSuppressCursorRotation() const override { return true; };
-
+    bool isEditingPitch() { return _isEditingPitch; }
 private:
     float _pitchChange = 0; // Used to detect if the state has been mutated
+    bool _isEditingPitch = false;
 };
