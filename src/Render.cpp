@@ -43,12 +43,8 @@ float degreesPerStage(float stageCount) {
 }
 
 void updateAnimations(
-    Sequence *sequence,
-    uint8_t highlightedStageIndex,
-    bool isEditingPosition,
-    bool isEditingGateMode,
-    bool isEditingPitch,
-    float hiddenValue
+  Sequence *sequence,
+  InteractionManager &interactionManager
 ) {
   if ((millis() - lastAnimationTickMillis) > 16 || lastAnimationTickMillis == 0) {
     lastAnimationTickMillis += 16;
@@ -58,21 +54,21 @@ void updateAnimations(
     for (size_t i = 0; i < sequence->stageCount(); i++) {
       Stage& stage = sequence->getStage(i);
       StageDrawInfo& stageDrawInfo = renderableStages[stage.id];
-      bool isHighlighted = highlightedStageIndex == i || stage.isSelected;
+      bool isHighlighted = interactionManager._highlightedStageIndex == i || stage.isSelected;
 
       // Update position
       float targetRadius = defaultStagePositionRadius;
       targetRadius += (isHighlighted ? 8 : 0);
-      if (isEditingPosition) {
+      if (interactionManager._isEditingPosition) {
         targetRadius += (isHighlighted ? 4 : -8);
       }
 
       float targetAngle = i * degreesPerStage(sequence->stageCount());
-      if (isEditingPosition && isHighlighted) {
-        stageDrawInfo.angle = targetAngle + hiddenValue;
+      if (interactionManager._isEditingPosition && isHighlighted) {
+        stageDrawInfo.angle = targetAngle + interactionManager._hiddenValue;
       }
 
-      bool isEditingGateModeOfThisStage = isEditingGateMode && (i == highlightedStageIndex || stage.isSelected);
+      bool isEditingGateModeOfThisStage = interactionManager.gateModeButtonHandler.isEditingGateMode() && (i == interactionManager._highlightedStageIndex || stage.isSelected);
       if (isEditingGateModeOfThisStage) {
         stageDrawInfo.pulsePipsAngle = stage.pulsePipsAngle;
       } else {
@@ -80,15 +76,15 @@ void updateAnimations(
         stageDrawInfo.pulsePipsAngle = stageDrawInfo.pulsePipsAngle + degBetweenAngles(stageDrawInfo.pulsePipsAngle, stage.pulsePipsAngle) * 0.1;
       }
 
-      if (isEditingPosition && isHighlighted) {
-        stageDrawInfo.angle = targetAngle + hiddenValue;
+      if (interactionManager._isEditingPosition && isHighlighted) {
+        stageDrawInfo.angle = targetAngle + interactionManager._hiddenValue;
       } else {
         stageDrawInfo.angle = stageDrawInfo.angle + degBetweenAngles(stageDrawInfo.angle, targetAngle) * 0.1;
       }
 
       stageDrawInfo.radius = lerp(stageDrawInfo.radius, targetRadius, 0.1);
       
-      if (isEditingPitch) {
+      if (interactionManager.pitchButtonHandler.isEditingPitch()) {
         stageDrawInfo.output = stage.output;
       } else {
         stageDrawInfo.output = lerp(stageDrawInfo.output, stage.output, 0.1);
@@ -98,19 +94,15 @@ void updateAnimations(
 }
 
 void renderIfDmaIsReady(
-    Sequence *sequence, 
-    float cursorAngle, 
-    uint8_t highlightedStageIndex, 
-    const std::vector<Button*> &activeButtons,
-    bool isEditingGateMode
+    Sequence *sequence,
+    InteractionManager &interactionManager,
+    const std::vector<Button*> &activeButtons
 ) {
     if (!tft.dmaBusy()) {
         render(
             sequence, 
-            cursorAngle, 
-            highlightedStageIndex, 
-            activeButtons,
-            isEditingGateMode
+            interactionManager,
+            activeButtons
         );
 
         int32_t deltaMillis = millis() - lastFrameMillis;
@@ -121,11 +113,9 @@ void renderIfDmaIsReady(
 }
 
 void render(
-    Sequence *sequence, 
-    float cursorAngle, 
-    uint8_t highlightedStageIndex, 
-    const std::vector<Button*> &activeButtons,
-    bool isEditingGateMode
+    Sequence *sequence,
+    InteractionManager &interactionManager,
+    const std::vector<Button*> &activeButtons
 ) {
   screen.fillSprite(COLOUR_BG);
 
@@ -176,7 +166,7 @@ void render(
     StageDrawInfo& stageDrawInfo = renderableStages[curStage.id];
 
     bool isActive = sequence->indexOfActiveStage() == i;
-    bool isHighlighted = highlightedStageIndex == i || curStage.isSelected;
+    bool isHighlighted = interactionManager._highlightedStageIndex == i || curStage.isSelected;
 
     Vec2 stagePos = Vec2::fromPolar(stageDrawInfo.radius, stageDrawInfo.angle) + screenCenter;
 
@@ -218,7 +208,7 @@ void render(
 
     drawStageOutput(stageDrawInfo.output, colour, stagePos);
 
-    bool isEditingGateModeOfThisStage = isEditingGateMode && (i == highlightedStageIndex || curStage.isSelected);
+    bool isEditingGateModeOfThisStage = interactionManager.gateModeButtonHandler.isEditingGateMode() && (i == interactionManager._highlightedStageIndex || curStage.isSelected);
     bool arePulsePipsAnimating = abs(degBetweenAngles(stageDrawInfo.pulsePipsAngle, curStage.pulsePipsAngle)) > 10;
 
     if (curStage.gateMode == EACH || isEditingGateModeOfThisStage || arePulsePipsAnimating) {
@@ -255,7 +245,7 @@ void render(
   screen.drawArc(
     SCREEN_HALF_WIDTH, SCREEN_HALF_HEIGHT, // Position
     SCREEN_HALF_WIDTH + 2, SCREEN_HALF_WIDTH - 5, // Radius, Inner Radius
-    fwrap(cursorAngle + 180 - 4, 0, 360), fwrap(cursorAngle + 180 + 4, 0, 360), // Arc start & end 
+    fwrap(interactionManager._cursorAngle + 180 - 4, 0, 360), fwrap(interactionManager._cursorAngle + 180 + 4, 0, 360), // Arc start & end 
     COLOUR_USER, COLOUR_BG, // Colour, AA Colour
     false // Smoothing
   );

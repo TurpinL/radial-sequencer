@@ -16,6 +16,7 @@
 #include "SelectionState.hpp"
 #include "UserInputState.hpp"
 #include "Render.hpp"
+#include "InteractionManager.hpp"
 
 // USB MIDI object
 Adafruit_USBD_MIDI usb_midi;
@@ -24,12 +25,11 @@ Adafruit_USBD_MIDI usb_midi;
 // and attach usb_midi as the transport.
 MIDI_CREATE_INSTANCE(Adafruit_USBD_MIDI, usb_midi, MIDI);
 
-
-UndoRedoManager undoRedoManager;
 Sequence *sequence;
+UndoRedoManager undoRedoManager;
+InteractionManager interactionManager;
 
 SineCosinePot endlessPot = SineCosinePot(0, 1);
-float cursorAngle = 0;
 
 uint8_t gate1Pin = D14;
 uint8_t gate2Pin = D15;
@@ -54,28 +54,12 @@ std::vector<Button*> buttons = {
 };
 
 std::vector<Button*> activeButtons; // Buttons that are held, or fallingEdge == true.
-GateModeButtonHandler gateModeButtonHandler;
-SelectButtonHandler selectButtonHandler;
-PitchButtonHandler pitchButtonHandler;
-
-std::map<Command, IButtonHandler*> buttonHandlers = {
-  {GATEMODE, &gateModeButtonHandler},
-  {SELECT, &selectButtonHandler},
-  {PITCH, &pitchButtonHandler}
-};
-
-// These shouldn't be needed once all the buttons have dedicated handlers
-float hiddenValue = 0;
-float mutationCanary = 0;
 
 Multiplexer switchMult = Multiplexer(D13, D12, D11, D10);
 Multiplexer switchLedMult = Multiplexer(D8, D7, D6, D5);
 
 float lastHighlightedStageIndicatorAngle = 0;
-uint8_t highlightedStageIndex = 0;
 bool lastSelectToggleState = true;
-bool isEditingPosition = false;
-
 bool lastGateValue = false;
 
 void processInput();
@@ -116,11 +100,7 @@ void loop() {
 
   updateAnimations(
     sequence,
-    highlightedStageIndex,
-    isEditingPosition,
-    gateModeButtonHandler.isEditingGateMode(),
-    pitchButtonHandler.isEditingPitch(),
-    hiddenValue
+    interactionManager
   );
 
   // Gate LED
@@ -134,10 +114,8 @@ void loop() {
   
   renderIfDmaIsReady(
     sequence,
-    cursorAngle, 
-    highlightedStageIndex, 
-    activeButtons,
-    gateModeButtonHandler.isEditingGateMode()
+    interactionManager, 
+    activeButtons
   );
 }
 
@@ -208,147 +186,6 @@ void processInput() {
     sequence->setBpm(newBpm);
   }
   
-  // Hidden value used for... things?
-  bool shouldResetHiddenValue = true;
-
-  // Update highlighted stage
-  float degreesPerStage = 360 / (float)sequence->stageCount();
-
-  if (!isEditingPosition) {
-    highlightedStageIndex = (int)roundf(cursorAngle / degreesPerStage) % sequence->stageCount();
-  }
-
-  SelectionState selectionState = SelectionState(*sequence, highlightedStageIndex); 
-
-  bool isShiftHeld = false;
-  bool shouldSupressCursorRotation = false;
-  isEditingPosition = false;
-
-  if (buttonHandlers.find(userInputState.getBaseCommand()) != buttonHandlers.end()) {
-    IButtonHandler &handler = *buttonHandlers[userInputState.getBaseCommand()];
-
-    handler.handle(userInputState, undoRedoManager, selectionState);
-    shouldSupressCursorRotation = handler.shouldSuppressCursorRotation();
-  } else if (userInputState.getBaseCommand() == UNDO) {
-    if (userInputState.getBaseButton().risingEdge()) {
-      undoRedoManager.undo();
-    } 
-  } else if (userInputState.getBaseCommand() == REDO) {
-    if (userInputState.getBaseButton().risingEdge()) {
-      undoRedoManager.redo();
-    } 
-  } else if (userInputState.getBaseCommand() == SKIP) {
-    if (userInputState.getBaseButton().risingEdge()) {
-      // Toggle isSkipped
-      for (auto stage : selectionState.getAffectedStages()) {
-        stage->isSkipped = !stage->isSkipped;
-      }
-  
-      sequence->updateNextStageIndex();
-
-      undoRedoManager.saveUndoRedoSnapshot();
-    }
-  } else if (userInputState.getBaseCommand() == PULSES) {
-    shouldSupressCursorRotation = true;
-    shouldResetHiddenValue = false;
-
-    hiddenValue += endlessPot.getAngleDelta();
-
-    if (abs(hiddenValue) > 20) {
-      for (auto stage : selectionState.getAffectedStages()) {
-        stage->pulseCount = coerceInRange(stage->pulseCount + (hiddenValue > 0 ? 1 : -1), 1, 8);
-      }
-      mutationCanary += (hiddenValue > 0 ? 1 : -1);
-
-      hiddenValue = 0;
-    }
-
-    if (userInputState.getBaseButton().fallingEdge() && mutationCanary != 0) {
-      undoRedoManager.saveUndoRedoSnapshot();
-      mutationCanary = 0;
-    }
-  } else if (userInputState.getBaseCommand() == SLIDE) {
-    if (userInputState.getBaseButton().risingEdge()) {
-      for (auto stage : selectionState.getAffectedStages()) {
-        stage->shouldSlideIn = !stage->shouldSlideIn;
-      }
-
-      undoRedoManager.saveUndoRedoSnapshot();
-    }
-  } else if (userInputState.getBaseCommand() == CLONE) {
-    if (userInputState.getBaseButton().risingEdge()) {
-      // Iterate from the end to the beginning because deleting 
-      // stages moves around the data in the stages vector causing 
-      // the pointers in affected stages to point to the wrong stage. 
-      // Iterating in reverse is a workaround to that issue
-      auto rit = selectionState.getAffectedStages().rbegin();
-      while (rit != selectionState.getAffectedStages().rend()) {
-        // Copy everything about the stage, except deselect it
-        Stage newStage = **rit;
-        newStage.isSelected = false;
-        newStage.id = sequence->getNewStageId();
-
-        sequence->insertStage(sequence->indexOfStage(*rit) + 1, newStage);
-        
-        ++rit;
-      }
-
-      undoRedoManager.saveUndoRedoSnapshot();
-    }
-  } else if (userInputState.getBaseCommand() == DELETE) {
-    if (userInputState.getBaseButton().risingEdge()) {
-      // Iterate from the end to the beginning because deleting 
-      // stages moves around the data in the stages vector causing 
-      // the pointers in affected stages to point to the wrong stage. 
-      // Iterating in reverse is a workaround to that issue
-      auto rit = selectionState.getAffectedStages().rbegin();
-      while (rit != selectionState.getAffectedStages().rend()) {
-        sequence->deleteStage(sequence->indexOfStage(*rit));
-        ++rit;
-      }
-
-      undoRedoManager.saveUndoRedoSnapshot();
-    }
-  } else if (userInputState.getBaseCommand() == MOVE) {
-    shouldResetHiddenValue = false;
-    isEditingPosition = true;
-
-    hiddenValue += endlessPot.getAngleDelta();
-    float degreesPerStage = 360 / (float)sequence->stageCount();
-
-    // When we move the stages far enough rearrange the sequence
-    if (abs(hiddenValue) > degreesPerStage) {
-      int direction = (hiddenValue > 0) ? 1 : -1;
-      mutationCanary += direction;
-      
-      std::vector<size_t> indexesOfStagesToMove;
-      for (Stage* stage : selectionState.getAffectedStages()) {
-        size_t stageIndex = sequence->indexOfStage(stage);
-        indexesOfStagesToMove.push_back(stageIndex);
-      }
-
-      sequence->moveStages(indexesOfStagesToMove, direction);
-
-      // The highlightedStage will be moved by this action, so update the index
-      highlightedStageIndex = wrap((int)highlightedStageIndex + direction, 0, sequence->stageCount());
-
-      hiddenValue = 0;
-    }
-
-    if (userInputState.getBaseButton().fallingEdge() && mutationCanary != 0) {
-      undoRedoManager.saveUndoRedoSnapshot();
-      mutationCanary = 0;
-    }
-  }
-
-  if (!shouldSupressCursorRotation) {
-    // Cusor
-    cursorAngle += endlessPot.getAngleDelta();
-    cursorAngle = fwrap(cursorAngle, 0, 360); 
-  }
-
-  if (shouldResetHiddenValue) {
-    hiddenValue = 0;
-  }
+  interactionManager.processInput(undoRedoManager, userInputState);
 }
 

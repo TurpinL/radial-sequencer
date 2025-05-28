@@ -5,30 +5,23 @@
 #include "Vec2.h"
 #include "Sequence.h"
 #include "Button.h"
+#include "InteractionManager.hpp"
 
 void initScreen();
 
 void updateAnimations(
     Sequence *sequence,
-    uint8_t highlightedStageIndex,
-    bool isEditingPosition,
-    bool isEditingGateMode,
-    bool isEditingPitch,
-    float hiddenValue
+    InteractionManager &interactionManager
 );
 
 void render(
-    Sequence *sequence, 
-    float cursorAngle, 
-    uint8_t highlightedStageIndex, 
-    const std::vector<Button*> &activeButtons,
-    bool isEditingGateMode
+    Sequence *sequence,
+    InteractionManager &interactionManager,
+    const std::vector<Button*> &activeButtons
 );
 
 void renderIfDmaIsReady(
     Sequence *sequence, 
-    float cursorAngle, 
-    uint8_t highlightedStageIndex, 
-    const std::vector<Button*> &activeButtons,
-    bool isEditingGateMode
+    InteractionManager &interactionManager,
+    const std::vector<Button*> &activeButtons
 );
