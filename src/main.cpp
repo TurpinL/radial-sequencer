@@ -46,10 +46,11 @@ Button pulsesBtn = Button(PULSES);
 Button moveBtn = Button(MOVE);
 Button undoBtn = Button(UNDO);
 Button redoBtn = Button(REDO);
+Button arpBtn = Button(ARP);
 std::vector<Button*> buttons = {
   nullptr, nullptr, nullptr, nullptr, 
   nullptr, nullptr, &selectBtn, &pitchBtn,
-  nullptr,  nullptr, &moveBtn, nullptr,
+  nullptr,  &arpBtn, &moveBtn, nullptr,
   &redoBtn, &pulsesBtn, &gatemodeBtn, &undoBtn
 };
 
@@ -99,7 +100,7 @@ void loop() {
   }
 
   updateAnimations(
-    sequence,
+    undoRedoManager,
     interactionManager
   );
 
@@ -113,7 +114,7 @@ void loop() {
   analogWrite(ledMultPin, 30);
   
   renderIfDmaIsReady(
-    sequence,
+    undoRedoManager,
     interactionManager, 
     activeButtons
   );

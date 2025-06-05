@@ -10,8 +10,8 @@ void PitchButtonHandler::handle(
     }
 
     for (auto stage : selectionState.getAffectedStages()) {
-        float newVoltage = stage->output + userInputState.getAngleDelta() / 360.f;
-        stage->output = coerceInRange(newVoltage, 0, 2);
+        float newVoltage = stage->getBaseOutput() + userInputState.getAngleDelta() / 360.f;
+        stage->setOutput(coerceInRange(newVoltage, 0, 2));
     }
 
     _pitchChange += userInputState.getAngleDelta();

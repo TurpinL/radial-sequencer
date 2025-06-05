@@ -4,24 +4,25 @@
 #include <TFT_eSPI.h>
 #include "Vec2.h"
 #include "Sequence.h"
+#include "UndoRedoManager.hpp"
 #include "Button.h"
 #include "InteractionManager.hpp"
 
 void initScreen();
 
 void updateAnimations(
-    Sequence *sequence,
+    UndoRedoManager &undoRedoManager,
     InteractionManager &interactionManager
 );
 
 void render(
-    Sequence *sequence,
+    UndoRedoManager &undoRedoManager,
     InteractionManager &interactionManager,
     const std::vector<Button*> &activeButtons
 );
 
 void renderIfDmaIsReady(
-    Sequence *sequence, 
+    UndoRedoManager &undoRedoManager, 
     InteractionManager &interactionManager,
     const std::vector<Button*> &activeButtons
 );

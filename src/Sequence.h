@@ -39,36 +39,61 @@ class StageDrawInfo {
 };
 
 class Stage {
-    public:
-        uint16_t id;
-        float output = 1;
-        uint8_t pulseCount = 4;
-        GateMode gateMode = EACH;
-        bool isSkipped = false;
-        bool isSelected = false;
-        bool shouldSlideIn = false;
+public:
+    uint16_t id;
+    uint8_t pulseCount = 4;
+    GateMode gateMode = EACH;
+    bool isSkipped = false;
+    bool isSelected = false;
+    bool shouldSlideIn = false;
+    bool shouldArpeggiate = false;
+    uint8_t arpSteps = 5;
+    float arpStepWidth = 0.2;
 
-        // Render stuff
-        float pulsePipsAngle = 0;
+    // TODO: Make arpeggiation undo/redo compatible
+    // size_t arppegiationOffset = 0; // Saves the global pulse count when arpeggiation is toggled on
 
-        bool isPulseActive(uint8_t index) {
-            if (isSkipped) return false;
+    // Render stuff
+    float pulsePipsAngle = 0;
 
-            if (gateMode == HELD || gateMode == EACH) {
-                return true;
-            } else if (gateMode == FIRST && index == 0) {
-                return true;
-            } else {
-                return false;
-            }
+    bool isPulseActive(uint8_t index) {
+        if (isSkipped) return false;
+
+        if (gateMode == HELD || gateMode == EACH) {
+            return true;
+        } else if (gateMode == FIRST && index == 0) {
+            return true;
+        } else {
+            return false;
         }
+    }
 
-        Stage(uint16_t id) : id(id) {}
+    float getOutput(uint stagePulseCount) {
+        if (shouldArpeggiate) {
+            return output + arpStepWidth * (stagePulseCount % arpSteps);
+        } else {
+            return output;
+        }
+    }
+
+    float getBaseOutput() {
+        return output;
+    }
+
+    void setOutput(float newOutput) {
+        output = newOutput;
+    }
+
+    Stage(uint16_t id) : id(id) {}
+
+private:
+    float output = 1;
 };
 
 class Sequence {
     public:
-        Sequence(u_int8_t stageCount) {
+        Sequence(u_int8_t stageCount, uint stagePulseTallyById[MAX_STAGES]) {
+            _stagePulseTallyById = stagePulseTallyById;
             _stages.reserve(MAX_STAGES);
 
             // Clip stageCount to a reasonable range
@@ -78,7 +103,7 @@ class Sequence {
             for (int i = 0; i < stageCount; i++) {
                 addStage();
                 _stages.back().pulseCount = (rand() % 2) + 1;
-                _stages.back().output = (rand() % 100) / 50.f;//-((rand() % 100) / 50.f) + 1;
+                _stages.back().setOutput((rand() % 100) / 50.f);
                 _stages.back().gateMode = EACH;
             }
 
@@ -86,7 +111,7 @@ class Sequence {
             updateNextStageIndex();
         }
 
-        Sequence() : Sequence(0) {}
+        Sequence() : Sequence(0, nullptr) {}
 
         void addStage() {
             _stages.push_back(Stage(getNewStageId()));
@@ -225,15 +250,20 @@ class Sequence {
 
         void update(unsigned long elapsedMicros) {
             if (elapsedMicros - _lastPulseMicros >= _microsPerPulse) {
+                // Handle the new pulse
                 _lastPulseMicros += _microsPerPulse;
 
+                _stagePulseTallyById[getActiveStage().id]++;
+
                 if (isLastPulseOfStage() || getActiveStage().isSkipped) {
+                    // Move to the next Stage
                     _outputOfLastStage = _output;
                     _activeStageIndex = _nextStageIndex;
                     _currentPulseInStage = 0;
                     
                     updateNextStageIndex();
                 } else {
+                    // Move to the next pulse in the current stage
                     _currentPulseInStage++;
                 }
             }
@@ -256,10 +286,11 @@ class Sequence {
                 _gate = isPulseActive && !hasGateLengthElapsed;
             }
 
+            uint activeStagePulseTally = _stagePulseTallyById[getActiveStage().id];
             if (isSliding()) {
-                _output = lerp(_outputOfLastStage, getActiveStage().output, _slideProgress);
+                _output = lerp(_outputOfLastStage, getActiveStage().getOutput(activeStagePulseTally), _slideProgress);
             } else {
-                _output = getActiveStage().output;
+                _output = getActiveStage().getOutput(activeStagePulseTally);
             }
         }
 
@@ -367,6 +398,7 @@ class Sequence {
         uint16_t _nextId = 0;
         float _output;
         bool _gate = false;
+        uint *_stagePulseTallyById;
 
         void _updateMicrosPerPulse() {
             _microsPerPulse = 60000000 / _bpm / _subdivision;

@@ -17,7 +17,7 @@ TFT_eSPI tft = TFT_eSPI();
 TFT_eSprite screen = TFT_eSprite(&tft);
 uint16_t* screenPtr;
 
-StageDrawInfo renderableStages[MAX_STAGES];
+StageDrawInfo renderableStagesById[MAX_STAGES]; // TODO: move to somewhere Sequence specific
 int32_t lastFrameMillis = 0;
 float fps = 0;
 int32_t lastAnimationTickMillis = 0;
@@ -43,9 +43,11 @@ float degreesPerStage(float stageCount) {
 }
 
 void updateAnimations(
-  Sequence *sequence,
+  UndoRedoManager &undoRedoManager,
   InteractionManager &interactionManager
 ) {
+  Sequence *sequence = undoRedoManager.getSequence();
+
   if ((millis() - lastAnimationTickMillis) > 16 || lastAnimationTickMillis == 0) {
     lastAnimationTickMillis += 16;
 
@@ -53,7 +55,7 @@ void updateAnimations(
 
     for (size_t i = 0; i < sequence->stageCount(); i++) {
       Stage& stage = sequence->getStage(i);
-      StageDrawInfo& stageDrawInfo = renderableStages[stage.id];
+      StageDrawInfo& stageDrawInfo = renderableStagesById[stage.id];
       bool isHighlighted = interactionManager._highlightedStageIndex == i || stage.isSelected;
 
       // Update position
@@ -84,23 +86,24 @@ void updateAnimations(
 
       stageDrawInfo.radius = lerp(stageDrawInfo.radius, targetRadius, 0.1);
       
+      uint curStagePulseTally = undoRedoManager.stagePulseTallyById[stage.id];
       if (interactionManager.pitchButtonHandler.isEditingPitch()) {
-        stageDrawInfo.output = stage.output;
+        stageDrawInfo.output = stage.getOutput(curStagePulseTally);
       } else {
-        stageDrawInfo.output = lerp(stageDrawInfo.output, stage.output, 0.1);
+        stageDrawInfo.output = lerp(stageDrawInfo.output, stage.getOutput(curStagePulseTally), 0.1);
       }
     }
   }
 }
 
 void renderIfDmaIsReady(
-    Sequence *sequence,
+    UndoRedoManager &undoRedoManager,
     InteractionManager &interactionManager,
     const std::vector<Button*> &activeButtons
 ) {
     if (!tft.dmaBusy()) {
         render(
-            sequence, 
+            undoRedoManager, 
             interactionManager,
             activeButtons
         );
@@ -113,10 +116,12 @@ void renderIfDmaIsReady(
 }
 
 void render(
-    Sequence *sequence,
+    UndoRedoManager &undoRedoManager,
     InteractionManager &interactionManager,
     const std::vector<Button*> &activeButtons
 ) {
+  Sequence *sequence = undoRedoManager.getSequence();
+
   screen.fillSprite(COLOUR_BG);
 
   float targetDegreesPerStage = 360 / (float)sequence->stageCount();
@@ -125,9 +130,9 @@ void render(
   if (true) {
     size_t nextStageIndex = sequence->getNextStageIndex();
     Stage &activeStage = sequence->getActiveStage();
-    StageDrawInfo& activeStageDrawInfo = renderableStages[activeStage.id];
+    StageDrawInfo& activeStageDrawInfo = renderableStagesById[activeStage.id];
     Stage &nextStage = sequence->getStage(nextStageIndex);
-    StageDrawInfo& nextStageDrawInfo = renderableStages[nextStage.id];
+    StageDrawInfo& nextStageDrawInfo = renderableStagesById[nextStage.id];
     float angle = activeStageDrawInfo.angle;
     float polarRadius = nextStageDrawInfo.radius;
     float progress = powf(sequence->getPulseAnticipation(), 2);
@@ -163,7 +168,7 @@ void render(
   // Stages
   for (size_t i = 0; i < sequence->stageCount(); i++) {
     Stage& curStage = sequence->getStage(i);
-    StageDrawInfo& stageDrawInfo = renderableStages[curStage.id];
+    StageDrawInfo& stageDrawInfo = renderableStagesById[curStage.id];
 
     bool isActive = sequence->indexOfActiveStage() == i;
     bool isHighlighted = interactionManager._highlightedStageIndex == i || curStage.isSelected;

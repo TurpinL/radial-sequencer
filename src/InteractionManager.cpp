@@ -4,7 +4,8 @@ InteractionManager::InteractionManager() {
     buttonHandlers = {
         {GATEMODE, &gateModeButtonHandler},
         {SELECT, &selectButtonHandler},
-        {PITCH, &pitchButtonHandler}
+        {PITCH, &pitchButtonHandler},
+        {ARP, &arpButtonHandler}
     };
 }
 

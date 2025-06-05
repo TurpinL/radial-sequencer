@@ -17,6 +17,7 @@ enum Command {
     DELETE,
     UNDO,
     REDO,
+    ARP,
     NOTHING
 };
 
@@ -33,6 +34,7 @@ inline String toString(Command command) {
         case DELETE:   return String("Delete");
         case UNDO:     return String("Undo  ");
         case REDO:     return String("Redo  ");
+        case ARP:      return String("Arp   ");
         case NOTHING:  return String("None  ");
         default:       return String("N/A   ");
     }

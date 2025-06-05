@@ -7,6 +7,7 @@
 #include "ButtonHandlers/PitchButtonHandler.hpp"
 #include "ButtonHandlers/SelectButtonHandler.hpp"
 #include "ButtonHandlers/GateModeButtonHandler.hpp"
+#include "ButtonHandlers/ArpButtonHandler.hpp"
 
 class InteractionManager {
 public:
@@ -23,5 +24,6 @@ public:
     GateModeButtonHandler gateModeButtonHandler;
     SelectButtonHandler selectButtonHandler;
     PitchButtonHandler pitchButtonHandler;
+    ArpButtonHandler arpButtonHandler;
     std::map<Command, IButtonHandler*> buttonHandlers;
 };
