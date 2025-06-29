@@ -14,13 +14,16 @@ const uint16_t COLOUR_INACTIVE =  0xaa21;
 const uint16_t COLOUR_SKIPPED =   0x5180;
 
 TFT_eSPI tft = TFT_eSPI();
-TFT_eSprite screen = TFT_eSprite(&tft);
-uint16_t* screenPtr;
+TFT_eSprite screens[2] = {TFT_eSprite(&tft), TFT_eSprite(&tft)};
+TFT_eSprite* curScreen = &screens[0];
+uint16_t* screenPtrs[2];
+uint8_t curScreenIndex = 0;
 
 StageDrawInfo renderableStagesById[MAX_STAGES]; // TODO: move to somewhere Sequence specific
 int32_t lastFrameMillis = 0;
 float fps = 0;
 int32_t lastAnimationTickMillis = 0;
+float msPerFrame = 0;
 
 void drawStageOutput(float output, uint16_t colour, Vec2 pos);
 void drawPulses(Stage& stage, float angle, Vec2 pos, int8_t currentPulseInStage, GateMode gateMode, float pulseAnticipation);
@@ -33,8 +36,10 @@ void initScreen() {
   tft.initDMA();
   tft.setRotation(1);
   tft.fillScreen(COLOUR_BG);
-  screenPtr = (uint16_t*)screen.createSprite(SCREEN_WIDTH, SCREEN_HEIGHT);
-  screen.setTextDatum(MC_DATUM);
+  screenPtrs[0] = (uint16_t*)screens[0].createSprite(SCREEN_WIDTH, SCREEN_HEIGHT);
+  screenPtrs[1] = (uint16_t*)screens[1].createSprite(SCREEN_WIDTH, SCREEN_HEIGHT);
+  screens[0].setTextDatum(MC_DATUM);
+  screens[1].setTextDatum(MC_DATUM);
   tft.startWrite(); // TFT chip select held low permanently
 }
 
@@ -96,23 +101,34 @@ void updateAnimations(
   }
 }
 
+void swapScreenBuffer() {
+  curScreenIndex = !curScreenIndex;
+  curScreen = &screens[curScreenIndex];
+}
+
 void renderIfDmaIsReady(
-    UndoRedoManager &undoRedoManager,
-    InteractionManager &interactionManager,
-    const std::vector<Button*> &activeButtons
+  UndoRedoManager &undoRedoManager,
+  InteractionManager &interactionManager,
+  const std::vector<Button*> &activeButtons
 ) {
-    if (!tft.dmaBusy()) {
-        render(
-            undoRedoManager, 
-            interactionManager,
-            activeButtons
-        );
+  if (!tft.dmaBusy()) {
+    int32_t frameStartMillis = millis();
 
-        int32_t deltaMillis = millis() - lastFrameMillis;
-        fps = 100000 / deltaMillis;
+    tft.pushImageDMA(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, screenPtrs[curScreenIndex]);
+    swapScreenBuffer();
+    render(
+      undoRedoManager, 
+      interactionManager,
+      activeButtons
+    );
 
-        lastFrameMillis = millis();
-    }
+    msPerFrame = msPerFrame * 0.9 + (millis() - frameStartMillis) * 0.1;
+
+    int32_t deltaMillis = millis() - lastFrameMillis;
+    fps = fps * 0.9 + (100000 / deltaMillis * 0.1);
+
+    lastFrameMillis = millis();
+  }
 }
 
 void render(
@@ -122,7 +138,7 @@ void render(
 ) {
   Sequence *sequence = undoRedoManager.getSequence();
 
-  screen.fillSprite(COLOUR_BG);
+  curScreen->fillSprite(COLOUR_BG);
 
   float targetDegreesPerStage = 360 / (float)sequence->stageCount();
 
@@ -162,7 +178,7 @@ void render(
       radius = 10 + 2 * (1 - progress);
     }
 
-    screen.fillCircle(pos.x, pos.y, radius, COLOUR_BEAT);
+    curScreen->fillCircle(pos.x, pos.y, radius, COLOUR_BEAT);
   }
 
   // Stages
@@ -192,7 +208,7 @@ void render(
       float degToStartAngle = -targetDegreesPerStage * 0.75f;
       float startAngle = wrapDeg(endAngle + degToStartAngle);
 
-      screen.drawArc(
+      curScreen->drawArc(
         screenCenter.x, screenCenter.y, // Position
         stageDrawInfo.radius + 1, stageDrawInfo.radius - 1, // Radius, Inner Radius
         startAngle, endAngle, // Arc start & end 
@@ -201,7 +217,7 @@ void render(
       );
 
       if (isActive && sequence->isSliding()) {
-        screen.drawArc(
+        curScreen->drawArc(
           screenCenter.x, screenCenter.y, // Position
           stageDrawInfo.radius + 1, stageDrawInfo.radius - 1, // Radius, Inner Radius
           startAngle, wrapDeg(startAngle - degToStartAngle * sequence->getPulseAnticipation()), // Arc start & end 
@@ -238,7 +254,7 @@ void render(
     if (curStage.isSelected) {
       Vec2 selectionPipPos = Vec2::fromPolar(stageDrawInfo.radius + 16, stageDrawInfo.angle) + screenCenter;
 
-      screen.fillCircle(
+      curScreen->fillCircle(
         selectionPipPos.x, selectionPipPos.y, // Position,
         2,
         COLOUR_USER
@@ -247,7 +263,7 @@ void render(
   }
 
   // Cursor
-  screen.drawArc(
+  curScreen->drawArc(
     SCREEN_HALF_WIDTH, SCREEN_HALF_HEIGHT, // Position
     SCREEN_HALF_WIDTH + 2, SCREEN_HALF_WIDTH - 5, // Radius, Inner Radius
     fwrap(interactionManager._cursorAngle + 180 - 4, 0, 360), fwrap(interactionManager._cursorAngle + 180 + 4, 0, 360), // Arc start & end 
@@ -257,28 +273,31 @@ void render(
   
   // if (gpio_get(4)) {
   //   // BPM
-  //   screen.setTextColor(COLOUR_INACTIVE);
-  //   screen.drawNumber(sequence->getBpm(), screenCenter.x, screenCenter.y - 6, 2);
-  //   screen.drawString("bpm", screenCenter.x, screenCenter.y + 6, 2);
+  //   curScreen->setTextColor(COLOUR_INACTIVE);
+  //   curScreen->drawNumber(sequence->getBpm(), screenCenter.x, screenCenter.y - 6, 2);
+  //   curScreen->drawString("bpm", screenCenter.x, screenCenter.y + 6, 2);
   // }
 
   // Gate
   drawStageOutput(sequence->getOutput(), sequence->getGate() ? COLOUR_ACTIVE : COLOUR_SKIPPED, screenCenter);
   
   // FPS
-  screen.setTextColor(COLOUR_INACTIVE);
-  screen.drawNumber(fps/100, screenCenter.x, 12, 2);
-  screen.drawString("fps", screenCenter.x, 24, 2);
+  curScreen->setTextColor(COLOUR_INACTIVE);
+  curScreen->drawNumber(fps/100, screenCenter.x, 12, 2);
+  curScreen->drawString("fps", screenCenter.x, 24, 2);
+
+  // ms/frame
+  curScreen->setTextColor(COLOUR_INACTIVE);
+  curScreen->drawNumber(msPerFrame, screenCenter.x, SCREEN_HEIGHT - 12, 2);
+  curScreen->drawString("ms/frame", screenCenter.x, SCREEN_HEIGHT - 24, 2);
 
   // Debug
   for (int i = 0; i < activeButtons.size(); i++) {
     Vec2 pos = Vec2::fromPolar(SCREEN_HALF_WIDTH - 25, 290 - i * 10) + screenCenter;
 
-    screen.setTextColor(COLOUR_INACTIVE);
-    screen.drawString(toString(activeButtons[i]->_command), pos.x, pos.y, 2);
+    curScreen->setTextColor(COLOUR_INACTIVE);
+    curScreen->drawString(toString(activeButtons[i]->_command), pos.x, pos.y, 2);
   }
-
-  tft.pushImageDMA(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, screenPtr);
 }
 
 void drawPulsePips(Stage& stage, float angle, Vec2 pos, int8_t currentPulseInStage, GateMode gateMode) {
@@ -307,7 +326,7 @@ void drawPulsePips(Stage& stage, float angle, Vec2 pos, int8_t currentPulseInSta
       }
 
       Vec2 pipPos = pos + Vec2::fromPolar(rowRadius, pulseAngle);
-      screen.fillRect(
+      curScreen->fillRect(
         pipPos.x - 1.5, pipPos.y - 1.5, // Position
         3, 3,
         colour
@@ -341,7 +360,7 @@ void drawHeldPulses(Stage& stage, float angle, Vec2 pos, int8_t currentPulseInSt
     float startAngle = wrapDeg(angle - degsInArc * 0.5f);
     float endAngle = wrapDeg(angle + degsInArc * 0.5f);
 
-    screen.drawArc(
+    curScreen->drawArc(
       pos.x, pos.y, // Position
       rowRadius + 2, rowRadius - 1, // Radius, Inner Radius
       startAngle, endAngle, // Arc start & end 
@@ -352,7 +371,7 @@ void drawHeldPulses(Stage& stage, float angle, Vec2 pos, int8_t currentPulseInSt
     if (progress > row * 4) { 
       float rowProgress = min(1, (progress - row * 4) / pulsesInRow);
 
-      screen.drawArc(
+      curScreen->drawArc(
         pos.x, pos.y, // Position
         rowRadius + 2, rowRadius - 1, // Radius, Inner Radius
         wrapDeg(endAngle - degsInArc * rowProgress), endAngle, // Arc start & end 
@@ -376,13 +395,13 @@ void drawStageOutput(float output, uint16_t colour, Vec2 pos) {
   float semitone = output - octave;
 
   if (semitone < 0.5) {
-    screen.fillSmoothCircle(
+    curScreen->fillSmoothCircle(
       pos.x, pos.y,
       semitone * 8 + 2,
       colour, COLOUR_BG
     );
   } else {
-    screen.drawArc(
+    curScreen->drawArc(
       pos.x, pos.y, // Position
       semitone * 8 + 2, (semitone - 0.5) * 2 * 11, // Radius, Inner Radius
       0, 359, // Arc start & end 
@@ -394,7 +413,7 @@ void drawStageOutput(float output, uint16_t colour, Vec2 pos) {
   for (int i = 0; i < octave; i++) {
     float extraSize = max(0, semitone * 8 - 8 + 3);
 
-    screen.drawCircle(
+    curScreen->drawCircle(
       pos.x, pos.y,
       10 + 2 * i + extraSize,
       colour
@@ -417,28 +436,28 @@ void drawStageStrikethrough(Vec2 pos) {
   Vec2 cornerB3 = pos + d * 17.5 + n * -(halfWidth+1.5f);
   Vec2 cornerB4 = pos + d * -33.5 + n * -(halfWidth+1.5f);
 
-  screen.fillTriangle(
+  curScreen->fillTriangle(
     cornerB1.x, cornerB1.y,
     cornerB2.x, cornerB2.y,
     cornerB4.x, cornerB4.y,
     COLOUR_BG
   );
 
-  screen.fillTriangle(
+  curScreen->fillTriangle(
     cornerB4.x, cornerB4.y,
     cornerB2.x, cornerB2.y,
     cornerB3.x, cornerB3.y,
     COLOUR_BG
   );
 
-  screen.fillTriangle(
+  curScreen->fillTriangle(
     corner1.x, corner1.y,
     corner2.x, corner2.y,
     corner4.x, corner4.y,
     COLOUR_SKIPPED
   );
 
-  screen.fillTriangle(
+  curScreen->fillTriangle(
     corner4.x, corner4.y,
     corner2.x, corner2.y,
     corner3.x, corner3.y,

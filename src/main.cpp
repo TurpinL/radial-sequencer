@@ -67,18 +67,13 @@ void processInput();
 
 void setup() {
   sequence = undoRedoManager.getSequence();
-  // Initialize MIDI, and listen to all MIDI channels
-  // This will also call usb_midi's begin()
   MIDI.begin(MIDI_CHANNEL_OMNI);
-
   Serial.begin(115200);
-
   initScreen();
 
-  // Gate LED
+  // Initialize GPIO
   pinMode(gate1Pin, OUTPUT);
   pinMode(gate2Pin, OUTPUT);
-
   pinMode(switchMultPin, INPUT_PULLUP);
   pinMode(ledMultPin, OUTPUT);
 }
@@ -86,24 +81,11 @@ void setup() {
 uint8_t currentNote = 0;
 
 void loop() {
-  processInput();
-  sequence->update(micros());
-
-  if (sequence->getGate() != lastGateValue) {
-    if (sequence->getGate()) {
-      currentNote = 60 + round(sequence->getOutput() * 24);
-      MIDI.sendNoteOn(currentNote, 255, 1);
-    } else {
-      MIDI.sendNoteOff(currentNote, 0, 1);
-    }
-    lastGateValue = sequence->getGate();
-  }
-
   updateAnimations(
     undoRedoManager,
     interactionManager
   );
-
+  
   // Gate LED
   digitalWrite(gate1Pin, sequence->getGate());
   // digitalWrite(gate2Pin, sequence->getGate());
@@ -120,18 +102,19 @@ void loop() {
   );
 }
 
-uint nextLedIndex = 0;
 void loop1() {
-  if (buttons[nextLedIndex] != nullptr) {
-    switchLedMult.select(nextLedIndex);
-  } else {
-    switchLedMult.select(0);
+  processInput();
+  sequence->update(micros());
+
+  if (sequence->getGate() != lastGateValue) {
+    if (sequence->getGate()) {
+      currentNote = 60 + round(sequence->getOutput() * 24);
+      MIDI.sendNoteOn(currentNote, 255, 1);
+    } else {
+      MIDI.sendNoteOff(currentNote, 0, 1);
+    }
+    lastGateValue = sequence->getGate();
   }
-
-  nextLedIndex += 1;
-  nextLedIndex %= 16;
-
-  delayMicroseconds(100);
 }
 
 uint nextButtonIndex = 0;
