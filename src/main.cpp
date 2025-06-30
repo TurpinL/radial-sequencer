@@ -113,6 +113,7 @@ void loop1() {
     } else {
       MIDI.sendNoteOff(currentNote, 0, 1);
     }
+
     lastGateValue = sequence->getGate();
   }
 }
@@ -159,15 +160,26 @@ void updateButtons() {
   );
 }
 
+float lastBpmPotState = 0;
+int32_t lastUpdateBpmMillis = 0;
+
 void processInput() {
   endlessPot.update();
   updateButtons();
 
   UserInputState userInputState = UserInputState(&endlessPot, activeButtons);
 
-  auto newBpm = (analogRead(A2) / 1024.f) * 100 + 60;
-  if (abs(sequence->getBpm() - newBpm) > 2) {
-    sequence->setBpm(newBpm);
+  // Limit jittering by slowing the rate we update the BPM
+  if (millis() - lastUpdateBpmMillis > 0) {
+    lastUpdateBpmMillis = millis();
+
+    int newBpmPotState = lerp(lastBpmPotState, analogRead(A2), 0.1);
+    lastBpmPotState = newBpmPotState;
+
+    auto newBpm = (newBpmPotState / 1024.f) * 100 + 60;
+    if (abs(sequence->getBpm() - newBpm) > 2) {
+      sequence->setBpm(newBpm);
+    }
   }
   
   interactionManager.processInput(undoRedoManager, userInputState);
