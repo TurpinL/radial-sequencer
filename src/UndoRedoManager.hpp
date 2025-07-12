@@ -44,7 +44,7 @@ class UndoRedoManager {
 
         uint stagePulseTallyById[MAX_STAGES]; // Tracks how many times each stage has pulsed. Mostly for consistent arpeggiation purposes
     private:
-        Sequence sequence = Sequence(4, stagePulseTallyById);
+        Sequence sequence = Sequence(6, stagePulseTallyById);
         Sequence history[UNDO_REDO_SIZE];
         uint8_t curPosInHistory = 0;
         uint8_t indexOfOldestSnapshot = 0;

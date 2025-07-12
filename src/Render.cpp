@@ -12,6 +12,7 @@ const uint16_t COLOUR_USER =      0x96cd;
 const uint16_t COLOUR_ACTIVE =    0xfd4f;
 const uint16_t COLOUR_INACTIVE =  0xaa21;
 const uint16_t COLOUR_SKIPPED =   0x5180;
+const uint16_t COLOUR_MUTATION =  0x7916;
 
 TFT_eSPI tft = TFT_eSPI();
 TFT_eSprite screens[2] = {TFT_eSprite(&tft), TFT_eSprite(&tft)};
@@ -53,8 +54,9 @@ void updateAnimations(
 ) {
   Sequence *sequence = undoRedoManager.getSequence();
 
-  if ((millis() - lastAnimationTickMillis) > 16 || lastAnimationTickMillis == 0) {
-    lastAnimationTickMillis += 16;
+  uint msPerUpdate = 16;
+  if ((millis() - lastAnimationTickMillis) > msPerUpdate || lastAnimationTickMillis == 0) {
+    lastAnimationTickMillis += msPerUpdate;
 
     uint defaultStagePositionRadius = 48 + 3 * sequence->stageCount();
 
@@ -75,6 +77,16 @@ void updateAnimations(
         stageDrawInfo.angle = targetAngle + interactionManager._hiddenValue;
       }
 
+      // Drag & drop positioning
+      if (interactionManager._isEditingPosition && isHighlighted) {
+        stageDrawInfo.angle = targetAngle + interactionManager._hiddenValue;
+      } else {
+        stageDrawInfo.angle = stageDrawInfo.angle + degBetweenAngles(stageDrawInfo.angle, targetAngle) * 0.1;
+      }
+
+      stageDrawInfo.radius = lerp(stageDrawInfo.radius, targetRadius, 0.1);
+      
+      // Pulse pips angle
       bool isEditingGateModeOfThisStage = interactionManager.gateModeButtonHandler.isEditingGateMode() && (i == interactionManager._highlightedStageIndex || stage.isSelected);
       if (isEditingGateModeOfThisStage) {
         stageDrawInfo.pulsePipsAngle = stage.pulsePipsAngle;
@@ -83,14 +95,19 @@ void updateAnimations(
         stageDrawInfo.pulsePipsAngle = stageDrawInfo.pulsePipsAngle + degBetweenAngles(stageDrawInfo.pulsePipsAngle, stage.pulsePipsAngle) * 0.1;
       }
 
-      if (interactionManager._isEditingPosition && isHighlighted) {
-        stageDrawInfo.angle = targetAngle + interactionManager._hiddenValue;
-      } else {
-        stageDrawInfo.angle = stageDrawInfo.angle + degBetweenAngles(stageDrawInfo.angle, targetAngle) * 0.1;
+      // Mutation animation
+      if (stage.wasMutated) {
+        stage.wasMutated = false;
+        stageDrawInfo.mutationAnimationProgress = 0;
       }
 
-      stageDrawInfo.radius = lerp(stageDrawInfo.radius, targetRadius, 0.1);
+      if (stageDrawInfo.mutationAnimationProgress < 1) {
+        stageDrawInfo.mutationAnimationProgress += msPerUpdate / 300.f;
+      } else {
+        stageDrawInfo.mutationAnimationProgress = 1;
+      }
 
+      // Output
       uint curStagePulseTally = undoRedoManager.stagePulseTallyById[stage.id];
       if (interactionManager.pitchButtonHandler.isEditingPitch()) {
         stageDrawInfo.output = stage.getOutput(curStagePulseTally);
@@ -181,6 +198,17 @@ void render(
     curScreen->fillCircle(pos.x, pos.y, radius, COLOUR_BEAT);
   }
 
+  // Mutation
+  if (true) {
+    curScreen->drawArc(
+      screenCenter.x, screenCenter.y, // Position
+      10, 16, // Radius, Inner Radius
+      0, sequence->getMutationLevel() * 360, // Arc start & end 
+      COLOUR_MUTATION, COLOUR_BG, // Colour, AA Colour
+      true // Smoothing
+    );
+  }
+
   // Stages
   for (size_t i = 0; i < sequence->stageCount(); i++) {
     Stage& curStage = sequence->getStage(i);
@@ -249,6 +277,14 @@ void render(
     }
 
     if (curStage.isSkipped) { drawStageStrikethrough(stagePos); }
+
+    if (stageDrawInfo.mutationAnimationProgress < 1) {
+      curScreen->fillSmoothCircle(
+        stagePos.x, stagePos.y,
+        stageDrawInfo.mutationAnimationProgress * 16,
+        COLOUR_MUTATION, COLOUR_BG
+      );
+    }
 
     // Selected indicator
     if (curStage.isSelected) {

@@ -26,6 +26,7 @@ class StageDrawInfo {
         float isSkipped = 0;
         float isSelected = 0;
         float shouldSlideIn = 0;
+        float mutationAnimationProgress = 1;
 
         float radius = 0;
         float angle = 0;
@@ -42,6 +43,7 @@ public:
     bool shouldArpeggiate = false;
     uint8_t arpSteps = 5;
     float arpStepWidth = 0.2;
+    bool wasMutated = false;
 
     // TODO: Make arpeggiation undo/redo compatible
     // size_t arppegiationOffset = 0; // Saves the global pulse count when arpeggiation is toggled on
@@ -75,6 +77,11 @@ public:
 
     void setOutput(float newOutput) {
         output = newOutput;
+    }
+
+    void mutate() {
+        output = ((rand() % 100) / 50.f);
+        wasMutated = true;
     }
 
     Stage(uint16_t id) : id(id) {}

@@ -175,6 +175,12 @@ class Sequence {
                 _stagePulseTallyById[getActiveStage().id]++;
 
                 if (isLastPulseOfStage() || getActiveStage().isSkipped) {
+                    // Roll to see if the current stage mutates
+                    bool shouldMutate = randf() > _mutationLevel;
+                    if (shouldMutate) {
+                        getActiveStage().mutate();
+                    }
+
                     // Move to the next Stage
                     _outputOfLastStage = _output;
                     _activeStageIndex = _nextStageIndex;
@@ -281,6 +287,16 @@ class Sequence {
             return _output;
         }
 
+        // 0 to 1
+        float getMutationLevel() {
+            return _mutationLevel;
+        }
+
+        // 0 to 1
+        void setMutationLevel(float newLevel) {
+            _mutationLevel = coerceInRange(newLevel, 0, 1);
+        }
+
         void setBpm(float bpm) {
             _bpm = bpm;
             _bpm = min(_bpm, 500);
@@ -306,6 +322,7 @@ class Sequence {
         size_t _activeStageIndex;
         size_t _nextStageIndex = 0;
         float _outputOfLastStage; // Referenced when sliding between stages
+        float _mutationLevel = 0.5f;
         float _bpm = 120;
         uint8_t _subdivision = 4;
         unsigned long _microsPerPulse;
