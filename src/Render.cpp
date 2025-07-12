@@ -90,7 +90,7 @@ void updateAnimations(
       }
 
       stageDrawInfo.radius = lerp(stageDrawInfo.radius, targetRadius, 0.1);
-      
+
       uint curStagePulseTally = undoRedoManager.stagePulseTallyById[stage.id];
       if (interactionManager.pitchButtonHandler.isEditingPitch()) {
         stageDrawInfo.output = stage.getOutput(curStagePulseTally);
@@ -192,10 +192,10 @@ void render(
     Vec2 stagePos = Vec2::fromPolar(stageDrawInfo.radius, stageDrawInfo.angle) + screenCenter;
 
     uint16_t colour;
-    if (isHighlighted) {
-      colour = COLOUR_USER;
-    } else if (isActive) {
-      colour = COLOUR_ACTIVE; 
+    if (isActive) {
+      colour = COLOUR_ACTIVE;
+    } else if (isHighlighted) {
+      colour = COLOUR_USER; 
     } else if (curStage.isSkipped) {
       colour = COLOUR_SKIPPED; 
     } else {
@@ -277,9 +277,6 @@ void render(
   //   curScreen->drawNumber(sequence->getBpm(), screenCenter.x, screenCenter.y - 6, 2);
   //   curScreen->drawString("bpm", screenCenter.x, screenCenter.y + 6, 2);
   // }
-
-  // Gate
-  drawStageOutput(sequence->getOutput(), sequence->getGate() ? COLOUR_ACTIVE : COLOUR_SKIPPED, screenCenter);
   
   // FPS
   curScreen->setTextColor(COLOUR_INACTIVE);
