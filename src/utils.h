@@ -31,6 +31,25 @@ inline float lerp(float a, float b, float t) {
     return a + t * (b - a);
 }
 
+inline uint16_t lerpColour(uint16_t a, uint16_t b, float t) {
+    // Extract R G B components
+    uint8_t ra = (a & 0xf800) >> 11;
+    uint8_t rb = (b & 0xf800) >> 11;
+
+    uint8_t ga = (a & 0x7e0) >> 5;
+    uint8_t gb = (b & 0x7e0) >> 5;
+
+    uint8_t ba = a & 0x1f;
+    uint8_t bb = b & 0x1f;
+
+    // Lerp
+    uint8_t red = lerp(ra, rb, t);
+    uint8_t green = lerp(ga, gb, t);
+    uint8_t blue = lerp(ba, bb, t);
+
+    return ((red << 11) | (green << 5) | blue);
+}
+
 inline float degBetweenAngles(float a, float b) {
   float angA = fwrap(b - a, -360, 360);
   float angB = fwrap(360 + b - a, -360, 360);

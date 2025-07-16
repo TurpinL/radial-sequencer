@@ -30,6 +30,8 @@ void drawPulses(Stage& stage, float angle, Vec2 pos, int8_t currentPulseInStage,
 void drawHeldPulses(Stage& stage, float angle, Vec2 pos, float pulseAnticipation);
 void drawPulsePips(Stage& stage, float angle, Vec2 pos, int8_t currentPulseInStage, GateMode gateMode);
 void drawStageStrikethrough(Vec2 pos);
+void drawPiano(Vec2 pos);
+void drawPianoPip(Vec2 pos, float highlightedPitch);
 
 void initScreen() {
   tft.init();
@@ -277,6 +279,19 @@ void render(
   //   curScreen->drawNumber(sequence->getBpm(), screenCenter.x, screenCenter.y - 6, 2);
   //   curScreen->drawString("bpm", screenCenter.x, screenCenter.y + 6, 2);
   // }
+
+  if (interactionManager.pitchButtonHandler.isEditingPitch()) {
+    drawPiano(screenCenter);
+    
+    for (size_t i = 0; i < sequence->stageCount(); i++) {
+      Stage& curStage = sequence->getStage(i);
+      bool isHighlighted = interactionManager._highlightedStageIndex == i || curStage.isSelected;
+
+      if (isHighlighted) {
+        drawPianoPip(screenCenter, curStage.getBaseOutput() * 12);
+      }
+    }
+  }
   
   // FPS
   curScreen->setTextColor(COLOUR_INACTIVE);
@@ -460,4 +475,72 @@ void drawStageStrikethrough(Vec2 pos) {
     corner3.x, corner3.y,
     COLOUR_SKIPPED
   );
+}
+
+Vec2 unscaledPianoPositions[] = {
+  Vec2(-6,  1), // C
+  Vec2(-5, -1), // C#
+  Vec2(-4,  1), // D
+  Vec2(-3, -1), // D#
+  Vec2(-2,  1), // E
+  Vec2(0,   1), // F
+  Vec2(1,  -1), // F#
+  Vec2(2,   1), // G
+  Vec2(3,  -1), // G#
+  Vec2(4,   1), // A
+  Vec2(5,  -1), // A#
+  Vec2(6,   1)  // B
+};
+
+int pianoPipSpacing = 5;
+int pianoPipSize = 4;
+
+void drawPiano(Vec2 pos) {
+  for (Vec2 unscaledPos : unscaledPianoPositions) {
+    Vec2 finalPos = unscaledPos * pianoPipSpacing + pos;
+
+    curScreen->drawSmoothCircle(
+      finalPos.x, finalPos.y,
+      pianoPipSize,
+      COLOUR_INACTIVE,
+      COLOUR_BG
+    );
+  }
+}
+
+void drawPianoPip(Vec2 pos, float highlightedPitch) {
+  float foo = fwrap(highlightedPitch, 0, 12);
+  int a = floor(foo);
+  int b = (int)ceil(foo) % 12;
+  float remainder = foo - a;
+
+  if (a == 11) {
+    Vec2 startExtension = Vec2(-8, 1);
+    Vec2 endExtension = Vec2(8, 1);
+
+    Vec2 userPos1 = lerp(unscaledPianoPositions[11], endExtension, remainder) * pianoPipSpacing + pos;
+    Vec2 userPos2 = lerp(startExtension, unscaledPianoPositions[0], remainder) * pianoPipSpacing + pos;
+
+    curScreen->drawSpot(
+      userPos1.x, userPos1.y,
+      pianoPipSize - 1,
+      lerpColour(COLOUR_USER, COLOUR_BG, remainder),
+      COLOUR_BG
+    );
+
+    curScreen->drawSpot(
+      userPos2.x, userPos2.y,
+      pianoPipSize - 1,
+      lerpColour(COLOUR_USER, COLOUR_BG, 1 - remainder),
+      COLOUR_BG
+    );
+  } else {
+    Vec2 userPos = lerp(unscaledPianoPositions[a], unscaledPianoPositions[b], remainder) * pianoPipSpacing + pos;
+    curScreen->drawSpot(
+      userPos.x, userPos.y,
+      pianoPipSize - 1,
+      COLOUR_USER,
+      COLOUR_BG
+    );
+  }
 }

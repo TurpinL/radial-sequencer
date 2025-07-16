@@ -51,3 +51,7 @@ class Vec2 {
       return Vec2(x, y);
     }
 };
+
+inline Vec2 lerp(Vec2 a, Vec2 b, float t) {
+    return a + (b - a) * t;
+}
