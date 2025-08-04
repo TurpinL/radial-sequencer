@@ -18,6 +18,7 @@ enum Command {
     UNDO,
     REDO,
     ARP,
+    QUANTIZER,
     NOTHING
 };
 
@@ -35,6 +36,7 @@ inline String toString(Command command) {
         case UNDO:     return String("Undo  ");
         case REDO:     return String("Redo  ");
         case ARP:      return String("Arp   ");
+        case QUANTIZER:return String("Quant ");
         case NOTHING:  return String("None  ");
         default:       return String("N/A   ");
     }

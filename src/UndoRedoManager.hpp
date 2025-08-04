@@ -42,6 +42,7 @@ class UndoRedoManager {
             sequence = history[curPosInHistory];
         }
 
+        bool isInQuantizerConfig = false;
         uint stagePulseTallyById[MAX_STAGES]; // Tracks how many times each stage has pulsed. Mostly for consistent arpeggiation purposes
     private:
         Sequence sequence = Sequence(4, stagePulseTallyById);

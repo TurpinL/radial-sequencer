@@ -9,11 +9,29 @@ InteractionManager::InteractionManager() {
     };
 }
 
-void InteractionManager::processInput(UndoRedoManager &undoRedoManager, UserInputState &userInputState) {
-    Sequence &sequence = *undoRedoManager.getSequence();
+void InteractionManager::processQuantizerConfigInput(UndoRedoManager &undoRedoManager, UserInputState &userInputState) {
+  if (userInputState.getBaseCommand() == QUANTIZER) {
+    // Exit quantizer config
+    if (userInputState.getBaseButton().fallingEdge()) {
+      undoRedoManager.isInQuantizerConfig = false;
+    }
+  } else if (userInputState.getBaseCommand() == SELECT) {
+    // Toggle current pip
+    if (userInputState.getBaseButton().fallingEdge()) {
+      int selectedNote = (int)round(_quantizerConfigCursorPos) % 12;
+      undoRedoManager.getSequence()->quantizer[selectedNote] = !undoRedoManager.getSequence()->quantizer[selectedNote];
+    }
+  }
 
-    // Hidden value used for... things?
-    bool shouldResetHiddenValue = true;
+  _quantizerConfigCursorPos += userInputState.getAngleDelta() / 360.f * 12.f;
+  _quantizerConfigCursorPos = fwrap(_quantizerConfigCursorPos, 0, 12); 
+}
+
+void InteractionManager::processInput(UndoRedoManager &undoRedoManager, UserInputState &userInputState) {
+  Sequence &sequence = *undoRedoManager.getSequence();
+
+  // Hidden value used for... things?
+  bool shouldResetHiddenValue = true;
 
   // Update highlighted stage
   float degreesPerStage = 360 / (float)sequence.stageCount();
@@ -28,7 +46,10 @@ void InteractionManager::processInput(UndoRedoManager &undoRedoManager, UserInpu
   bool shouldSupressCursorRotation = false;
   _isEditingPosition = false;
 
-  if (buttonHandlers.find(userInputState.getBaseCommand()) != buttonHandlers.end()) {
+  if (undoRedoManager.isInQuantizerConfig) {
+    shouldSupressCursorRotation = true;
+    processQuantizerConfigInput(undoRedoManager, userInputState);
+  } else if (buttonHandlers.find(userInputState.getBaseCommand()) != buttonHandlers.end()) {
     IButtonHandler &handler = *buttonHandlers[userInputState.getBaseCommand()];
 
     handler.handle(userInputState, undoRedoManager, selectionState);
@@ -142,6 +163,10 @@ void InteractionManager::processInput(UndoRedoManager &undoRedoManager, UserInpu
     if (userInputState.getBaseButton().fallingEdge() && _mutationCanary != 0) {
       undoRedoManager.saveUndoRedoSnapshot();
       _mutationCanary = 0;
+    }
+  } else if (userInputState.getBaseCommand() == QUANTIZER) {
+    if (userInputState.getBaseButton().fallingEdge()) {
+      undoRedoManager.isInQuantizerConfig = true;
     }
   }
 

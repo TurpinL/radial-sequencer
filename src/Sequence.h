@@ -301,6 +301,8 @@ class Sequence {
 
             return id;
         }
+
+        bool quantizer[12] = {1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1};
     private:
         std::vector<Stage> _stages;
         size_t _activeStageIndex;
