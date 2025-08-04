@@ -13,10 +13,12 @@ class InteractionManager {
 public:
     InteractionManager();
     void processInput(UndoRedoManager &undoRedoManager, UserInputState &userInputState);
+    void processQuantizerConfigInput(UndoRedoManager &undoRedoManager, UserInputState &userInputState);
 
     bool _isEditingPosition = false;
     uint8_t _highlightedStageIndex = 0;
     float _cursorAngle = 0;
+    float _quantizerConfigCursorPos = 0;
     // These shouldn't be needed once all the buttons have dedicated handlers
     float _hiddenValue = 0;
     float _mutationCanary = 0;

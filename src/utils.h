@@ -1,6 +1,7 @@
 #pragma once
 
 #include <math.h>
+#include <Arduino.h>
 
 inline float fwrap(float x, float min, float max) {
     if (max == min) return min;

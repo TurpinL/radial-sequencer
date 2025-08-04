@@ -31,7 +31,7 @@ void drawHeldPulses(Stage& stage, float angle, Vec2 pos, float pulseAnticipation
 void drawPulsePips(Stage& stage, float angle, Vec2 pos, int8_t currentPulseInStage, GateMode gateMode);
 void drawStageStrikethrough(Vec2 pos);
 void drawPiano(Vec2 pos);
-void drawPianoPip(Vec2 pos, float highlightedPitch);
+void drawPianoPip(Vec2 pos, float highlightedPitch, float size, uint16_t colour);
 
 void initScreen() {
   tft.init();
@@ -70,6 +70,10 @@ void updateAnimations(
       targetRadius += (isHighlighted ? 8 : 0);
       if (interactionManager._isEditingPosition) {
         targetRadius += (isHighlighted ? 4 : -8);
+      }
+
+      if (undoRedoManager.isInQuantizerConfig) {
+        targetRadius = 100;
       }
 
       float targetAngle = i * degreesPerStage(sequence->stageCount());
@@ -288,9 +292,23 @@ void render(
       bool isHighlighted = interactionManager._highlightedStageIndex == i || curStage.isSelected;
 
       if (isHighlighted) {
-        drawPianoPip(screenCenter, curStage.getBaseOutput() * 12);
+        drawPianoPip(screenCenter, curStage.getBaseOutput() * 12, 3, COLOUR_USER);
       }
     }
+  }
+
+  if (undoRedoManager.isInQuantizerConfig) {
+    drawPiano(screenCenter);
+
+    // Enabled keys 
+    for (int i = 0; i < 12; i++) {
+      if (sequence->quantizer[i]) {
+        drawPianoPip(screenCenter, i, 4, COLOUR_ACTIVE);
+      }
+    }
+
+    // User's cursor
+    drawPianoPip(screenCenter, interactionManager._quantizerConfigCursorPos, 2, COLOUR_USER);
   }
   
   // FPS
@@ -508,7 +526,7 @@ void drawPiano(Vec2 pos) {
   }
 }
 
-void drawPianoPip(Vec2 pos, float highlightedPitch) {
+void drawPianoPip(Vec2 pos, float highlightedPitch, float size, uint16_t colour) {
   float foo = fwrap(highlightedPitch, 0, 12);
   int a = floor(foo);
   int b = (int)ceil(foo) % 12;
@@ -523,23 +541,23 @@ void drawPianoPip(Vec2 pos, float highlightedPitch) {
 
     curScreen->drawSpot(
       userPos1.x, userPos1.y,
-      pianoPipSize - 1,
-      lerpColour(COLOUR_USER, COLOUR_BG, remainder),
+      size,
+      lerpColour(colour, COLOUR_BG, remainder),
       COLOUR_BG
     );
 
     curScreen->drawSpot(
       userPos2.x, userPos2.y,
-      pianoPipSize - 1,
-      lerpColour(COLOUR_USER, COLOUR_BG, 1 - remainder),
+      size,
+      lerpColour(colour, COLOUR_BG, 1 - remainder),
       COLOUR_BG
     );
   } else {
     Vec2 userPos = lerp(unscaledPianoPositions[a], unscaledPianoPositions[b], remainder) * pianoPipSpacing + pos;
     curScreen->drawSpot(
       userPos.x, userPos.y,
-      pianoPipSize - 1,
-      COLOUR_USER,
+      size,
+      colour,
       COLOUR_BG
     );
   }

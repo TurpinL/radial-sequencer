@@ -47,9 +47,11 @@ Button moveBtn = Button(MOVE);
 Button undoBtn = Button(UNDO);
 Button redoBtn = Button(REDO);
 Button arpBtn = Button(ARP);
+Button quantBtn = Button(QUANTIZER);
+Button cloneBtn = Button(CLONE);
 std::vector<Button*> buttons = {
   nullptr, nullptr, nullptr, nullptr, 
-  nullptr, nullptr, &selectBtn, &pitchBtn,
+  &quantBtn, nullptr, &selectBtn, &pitchBtn,
   nullptr,  &arpBtn, &moveBtn, nullptr,
   &redoBtn, &pulsesBtn, &gatemodeBtn, &undoBtn
 };
@@ -108,8 +110,28 @@ void loop1() {
 
   if (sequence->getGate() != lastGateValue) {
     if (sequence->getGate()) {
-      currentNote = 60 + round(sequence->getOutput() * 24);
-      MIDI.sendNoteOn(currentNote, 255, 1);
+      int baseNote = wrap(round(sequence->getOutput() * 24), 0, 12);
+      int distToClosestNoteUp = -1;
+      int distToClosestNoteDown = -1;
+      for (int i = 0; i < 12; i++) {
+        if (distToClosestNoteUp == -1 && sequence->quantizer[wrap(baseNote + i, 0, 12)]) {
+          distToClosestNoteUp = i;
+        }
+
+        if (distToClosestNoteDown == -1 && sequence->quantizer[wrap(baseNote - i, 0, 12)]) {
+          distToClosestNoteDown = i;
+        }
+
+        if (distToClosestNoteUp != -1 && distToClosestNoteDown != -1) break;
+      }
+
+      
+      int quantizerCorrection = (distToClosestNoteUp < distToClosestNoteDown) ? distToClosestNoteUp : -distToClosestNoteDown;
+
+      if (distToClosestNoteUp != -1 && distToClosestNoteDown != -1) {
+        currentNote = 60 + round(sequence->getOutput() * 24) + quantizerCorrection;
+        MIDI.sendNoteOn(currentNote, 255, 1);
+      }
     } else {
       MIDI.sendNoteOff(currentNote, 0, 1);
     }
