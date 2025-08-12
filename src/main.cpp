@@ -39,7 +39,6 @@ uint8_t switchMultPin = D9;
 uint8_t ledMultPin = D4;
 
 Button pitchBtn = Button(PITCH);
-Button deleteBtn = Button(DELETE);
 Button gatemodeBtn = Button(GATEMODE);
 Button selectBtn = Button(SELECT);
 Button pulsesBtn = Button(PULSES);
@@ -49,8 +48,9 @@ Button redoBtn = Button(REDO);
 Button arpBtn = Button(ARP);
 Button quantBtn = Button(QUANTIZER);
 Button cloneBtn = Button(CLONE);
+Button deleteBtn = Button(DELETE);
 std::vector<Button*> buttons = {
-  nullptr, nullptr, nullptr, nullptr, 
+  &deleteBtn, nullptr, &cloneBtn, nullptr, 
   &quantBtn, nullptr, &selectBtn, &pitchBtn,
   nullptr,  &arpBtn, &moveBtn, nullptr,
   &redoBtn, &pulsesBtn, &gatemodeBtn, &undoBtn

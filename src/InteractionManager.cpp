@@ -108,13 +108,16 @@ void InteractionManager::processInput(UndoRedoManager &undoRedoManager, UserInpu
       // Iterating in reverse is a workaround to that issue
       auto rit = selectionState.getAffectedStages().rbegin();
       while (rit != selectionState.getAffectedStages().rend()) {
+        if (sequence.stageCount() >= MAX_STAGES) { break; }
+
         // Copy everything about the stage, except deselect it
         Stage newStage = **rit;
         newStage.isSelected = false;
         newStage.id = sequence.getNewStageId();
+        undoRedoManager.stageDrawInfoById[newStage.id] = undoRedoManager.stageDrawInfoById[(**rit).id];
 
         sequence.insertStage(sequence.indexOfStage(*rit) + 1, newStage);
-        
+
         ++rit;
       }
 

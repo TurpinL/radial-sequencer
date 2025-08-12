@@ -19,7 +19,6 @@ TFT_eSprite* curScreen = &screens[0];
 uint16_t* screenPtrs[2];
 uint8_t curScreenIndex = 0;
 
-StageDrawInfo renderableStagesById[MAX_STAGES]; // TODO: move to somewhere Sequence specific
 int32_t lastFrameMillis = 0;
 float fps = 0;
 int32_t lastAnimationTickMillis = 0;
@@ -62,7 +61,7 @@ void updateAnimations(
 
     for (size_t i = 0; i < sequence->stageCount(); i++) {
       Stage& stage = sequence->getStage(i);
-      StageDrawInfo& stageDrawInfo = renderableStagesById[stage.id];
+      StageDrawInfo& stageDrawInfo = undoRedoManager.stageDrawInfoById[stage.id];
       bool isHighlighted = interactionManager._highlightedStageIndex == i || stage.isSelected;
 
       // Update position
@@ -152,9 +151,9 @@ void render(
   if (true) {
     size_t nextStageIndex = sequence->getNextStageIndex();
     Stage &activeStage = sequence->getActiveStage();
-    StageDrawInfo& activeStageDrawInfo = renderableStagesById[activeStage.id];
+    StageDrawInfo& activeStageDrawInfo = undoRedoManager.stageDrawInfoById[activeStage.id];
     Stage &nextStage = sequence->getStage(nextStageIndex);
-    StageDrawInfo& nextStageDrawInfo = renderableStagesById[nextStage.id];
+    StageDrawInfo& nextStageDrawInfo = undoRedoManager.stageDrawInfoById[nextStage.id];
     float angle = activeStageDrawInfo.angle;
     float polarRadius = nextStageDrawInfo.radius;
     float progress = powf(sequence->getPulseAnticipation(), 2);
@@ -190,7 +189,7 @@ void render(
   // Stages
   for (size_t i = 0; i < sequence->stageCount(); i++) {
     Stage& curStage = sequence->getStage(i);
-    StageDrawInfo& stageDrawInfo = renderableStagesById[curStage.id];
+    StageDrawInfo& stageDrawInfo = undoRedoManager.stageDrawInfoById[curStage.id];
 
     bool isActive = sequence->indexOfActiveStage() == i;
     bool isHighlighted = interactionManager._highlightedStageIndex == i || curStage.isSelected;

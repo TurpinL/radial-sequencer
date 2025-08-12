@@ -140,6 +140,16 @@ class Sequence {
             return -1;
         }
 
+        size_t indexOfStage(uint16_t id) {
+            for (size_t i = 0; i < _stages.size(); i++) {
+                if (id == _stages.at(i).id) {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
         Stage& getStage(size_t index) {
             return _stages.at(index);
         }
@@ -294,12 +304,16 @@ class Sequence {
         }
 
         uint16_t getNewStageId() {
-            auto id = _nextId;
+            // Find the lowest unused ID
+            for (uint16_t id = 0; id < MAX_STAGES; id++) {
+                if (indexOfStage(id) == -1) {
+                    return id;
+                }
+            }
 
-            _nextId++;
-            _nextId %= MAX_STAGES;
-
-            return id;
+            // Should not happen
+            // TODO: Proper error handling
+            return 0;
         }
 
         bool quantizer[12] = {1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1};
