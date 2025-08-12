@@ -54,7 +54,9 @@ class Button {
             _lastState = _state;
             _state = (_state << 1) + isPressed;
 
-            if (risingEdge()) {
+            if (!_isHeld && _lastState == 0b01111111 && _state == 0b11111111) { // Detect rising edge
+                _isHeld = true;
+                _isRisingEdge = true;
                 if (millis() - _lastActivation <= DOUBLE_TAP_WINDOW_MS) {
                     _wasDoubleTapped = true;
                     _isPrimedForDoubleTap = false;
@@ -62,6 +64,9 @@ class Button {
                 
                 _lastActivation = millis();
                 _isPrimedForDoubleTap = !_wasDoubleTapped; 
+            } else if (_isHeld && _lastState == 0b10000000 && _state == 0b00000000) { // Detect falling edge
+                _isHeld = false;
+                _isFallingEdge = true;
             }
 
             if (millis() - _lastActivation > DOUBLE_TAP_WINDOW_MS && _isPrimedForDoubleTap) {
@@ -72,21 +77,24 @@ class Button {
 
         // To be called at the start of each tick so that
         // risingEdge or fallingEdge don't stay high
-        // for multiple ticks
+        // for multiple ticks.
+        // Must be called before update
         void stabilizeState() {
             _lastState = _state;
+            _isRisingEdge = false;
+            _isFallingEdge = false;
         }
 
         bool held() {
-            return _state == 0b11111111;
+            return _isHeld;
         }
 
         bool risingEdge() {
-            return _lastState == 0b01111111 && _state == 0b11111111;
+            return _isRisingEdge;
         }
 
         bool fallingEdge() {
-            return _lastState == 0b11111111 && _state == 0b11111110;
+            return _isFallingEdge;
         }
 
         bool doubleTapped() {
@@ -113,4 +121,7 @@ class Button {
         bool _wasDoubleTapped = false;
         bool _isPrimedForDoubleTap = false;
         bool _didDoubleTapWindowPass = false;
+        bool _isHeld = false;
+        bool _isRisingEdge = false;
+        bool _isFallingEdge = false;
 };

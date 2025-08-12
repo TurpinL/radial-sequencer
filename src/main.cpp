@@ -169,7 +169,9 @@ void updateButtons() {
   // Add all held buttons to the list. 
   // Or buttons that just stopped being held. 
   for (Button *x: buttons) {
-    if ( x != nullptr && x->held() || x->fallingEdge() ) { 
+    bool isHeldOrFalling = x != nullptr && (x->held() || x->fallingEdge());
+
+    if (isHeldOrFalling) { 
       activeButtons.push_back(x);
     }
   }
