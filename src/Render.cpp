@@ -315,14 +315,10 @@ void render(
   }
   
   // FPS
-  curScreen->setTextColor(COLOUR_INACTIVE);
-  curScreen->drawNumber(fps/100, screenCenter.x, 12, 2);
-  curScreen->drawString("fps", screenCenter.x, 24, 2);
-
-  // ms/frame
-  curScreen->setTextColor(COLOUR_INACTIVE);
-  curScreen->drawNumber(msPerFrame, screenCenter.x, SCREEN_HEIGHT - 12, 2);
-  curScreen->drawString("ms/frame", screenCenter.x, SCREEN_HEIGHT - 24, 2);
+  char msPerFrameStr[16];
+  sprintf(msPerFrameStr, "%.0f (%.0fms)", fps/100, msPerFrame);
+  curScreen->setTextColor(COLOUR_SKIPPED);
+  curScreen->drawString(msPerFrameStr, screenCenter.x, SCREEN_HEIGHT - 12, 1);
 
   // Debug
   for (int i = 0; i < activeButtons.size(); i++) {
