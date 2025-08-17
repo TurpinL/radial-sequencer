@@ -33,17 +33,17 @@ inline float lerp(float a, float b, float t) {
 }
 
 inline uint16_t lerpColour(uint16_t a, uint16_t b, float t) {
-    // Extract R G B components
-    uint8_t ra = (a & 0xf800) >> 11;
-    uint8_t rb = (b & 0xf800) >> 11;
+    // Extract RGB components from 16-bit RGB565 format
+    uint8_t ra = (a >> 11) & 0x1F; // Red: bits 15-11 (5 bits)
+    uint8_t rb = (b >> 11) & 0x1F;
 
-    uint8_t ga = (a & 0x7e0) >> 5;
-    uint8_t gb = (b & 0x7e0) >> 5;
+    uint8_t ga = (a >> 5) & 0x3F;  // Green: bits 10-5 (6 bits)
+    uint8_t gb = (b >> 5) & 0x3F;
 
-    uint8_t ba = a & 0x1f;
-    uint8_t bb = b & 0x1f;
+    uint8_t ba = a & 0x1F;         // Blue: bits 4-0 (5 bits)
+    uint8_t bb = b & 0x1F;
 
-    // Lerp
+    // Lerp each component
     uint8_t red = lerp(ra, rb, t);
     uint8_t green = lerp(ga, gb, t);
     uint8_t blue = lerp(ba, bb, t);

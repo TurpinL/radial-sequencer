@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../Utils.h"
+#include "../utils.h"
 #include "../Sequence.h"
 #include "../UserInputState.hpp"
 #include "../UndoRedoManager.hpp"
