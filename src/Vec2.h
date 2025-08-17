@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Utils.h"
+#include "utils.h"
 
 const float DEG_TO_TAU = 3.14 * 2 / 360.f;
 

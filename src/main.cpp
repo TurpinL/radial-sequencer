@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include "Utils.h"
+#include "utils.h"
 #include "SineCosinePot.h"
 #include "Sequence.h"
 #include "Vec2.h"

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Sequence.h"
-#include "Utils.h"
+#include "utils.h"
 
 const uint8_t UNDO_REDO_SIZE = 24;
 
