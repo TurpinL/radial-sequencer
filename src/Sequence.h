@@ -291,6 +291,31 @@ class Sequence {
             return _output;
         }
 
+        float getMidiNote() {
+            int baseNote = wrap(round(_output * 12), 0, 12);
+            int distToClosestNoteUp = -1;
+            int distToClosestNoteDown = -1;
+            for (int i = 0; i < 12; i++) {
+                if (distToClosestNoteUp == -1 && quantizer[wrap(baseNote + i, 0, 12)]) {
+                    distToClosestNoteUp = i;
+                }
+
+                if (distToClosestNoteDown == -1 && quantizer[wrap(baseNote - i, 0, 12)]) {
+                    distToClosestNoteDown = i;
+                }
+
+                if (distToClosestNoteUp != -1 && distToClosestNoteDown != -1) break;
+            }
+            
+            int quantizerCorrection = (distToClosestNoteUp < distToClosestNoteDown) ? distToClosestNoteUp : -distToClosestNoteDown;
+
+            if (distToClosestNoteUp != -1 && distToClosestNoteDown != -1) {
+                return 60 + round(_output * 12) + quantizerCorrection;
+            } else {
+                return 60 + round(_output * 12);
+            }
+        }
+
         void setBpm(float bpm) {
             _bpm = bpm;
             _bpm = min(_bpm, 500);

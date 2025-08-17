@@ -155,7 +155,7 @@ void render(
     Stage &nextStage = sequence->getStage(nextStageIndex);
     StageDrawInfo& nextStageDrawInfo = undoRedoManager.stageDrawInfoById[nextStage.id];
     float angle = activeStageDrawInfo.angle;
-    float polarRadius = nextStageDrawInfo.radius;
+    float polarRadius = activeStageDrawInfo.radius;
     float progress = powf(sequence->getPulseAnticipation(), 2);
 
     if (sequence->isLastPulseOfStage()) {
@@ -302,12 +302,16 @@ void render(
     // Enabled keys 
     for (int i = 0; i < 12; i++) {
       if (sequence->quantizer[i]) {
-        drawPianoPip(screenCenter, i, 4, COLOUR_ACTIVE);
+        drawPianoPip(screenCenter, i, 4, COLOUR_INACTIVE);
       }
     }
 
     // User's cursor
     drawPianoPip(screenCenter, interactionManager._quantizerConfigCursorPos, 2, COLOUR_USER);
+  }
+
+  if(sequence->getGate()) {
+    drawPianoPip(screenCenter, sequence->getMidiNote(), 2, COLOUR_ACTIVE);
   }
   
   // FPS

@@ -110,28 +110,8 @@ void loop1() {
 
   if (sequence->getGate() != lastGateValue) {
     if (sequence->getGate()) {
-      int baseNote = wrap(round(sequence->getOutput() * 24), 0, 12);
-      int distToClosestNoteUp = -1;
-      int distToClosestNoteDown = -1;
-      for (int i = 0; i < 12; i++) {
-        if (distToClosestNoteUp == -1 && sequence->quantizer[wrap(baseNote + i, 0, 12)]) {
-          distToClosestNoteUp = i;
-        }
-
-        if (distToClosestNoteDown == -1 && sequence->quantizer[wrap(baseNote - i, 0, 12)]) {
-          distToClosestNoteDown = i;
-        }
-
-        if (distToClosestNoteUp != -1 && distToClosestNoteDown != -1) break;
-      }
-
-      
-      int quantizerCorrection = (distToClosestNoteUp < distToClosestNoteDown) ? distToClosestNoteUp : -distToClosestNoteDown;
-
-      if (distToClosestNoteUp != -1 && distToClosestNoteDown != -1) {
-        currentNote = 60 + round(sequence->getOutput() * 24) + quantizerCorrection;
-        MIDI.sendNoteOn(currentNote, 255, 1);
-      }
+      currentNote = sequence->getMidiNote();
+      MIDI.sendNoteOn(currentNote, 255, 1);
     } else {
       MIDI.sendNoteOff(currentNote, 0, 1);
     }
