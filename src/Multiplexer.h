@@ -14,6 +14,11 @@ class Multiplexer {
             pinMode(_select1, OUTPUT);
             pinMode(_select2, OUTPUT);
             pinMode(_select3, OUTPUT);
+
+            gpio_put(_select0, 0);
+            gpio_put(_select1, 0);
+            gpio_put(_select2, 0);
+            gpio_put(_select3, 0);
         }
 
         void select(uint channel) {
@@ -21,9 +26,14 @@ class Multiplexer {
             gpio_put(_select1, channel >> 1 & 1);
             gpio_put(_select2, channel >> 2 & 1);
             gpio_put(_select3, channel >> 3 & 1);
+            _channel = channel;
         }
-
+        
+        uint getChannel() {
+            return _channel;
+        }
     private:
+        uint _channel = 0;
         uint _select0;
         uint _select1;
         uint _select2;

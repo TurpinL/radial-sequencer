@@ -38,31 +38,22 @@ uint8_t cvPin = D21;
 uint8_t switchMultPin = D9;
 uint8_t ledMultPin = D4;
 
-Button pitchBtn = Button(PITCH);
-Button gatemodeBtn = Button(GATEMODE);
-Button selectBtn = Button(SELECT);
-Button pulsesBtn = Button(PULSES);
-Button moveBtn = Button(MOVE);
-Button undoBtn = Button(UNDO);
-Button redoBtn = Button(REDO);
-Button arpBtn = Button(ARP);
-Button quantBtn = Button(QUANTIZER);
-Button cloneBtn = Button(CLONE);
-Button deleteBtn = Button(DELETE);
-Button muteBtn = Button(MUTE);
-Button lengthBtn = Button(LENGTH);
-Button randomizeBtn = Button(RANDOMIZE);
-std::vector<Button*> buttons = {
-  &deleteBtn, nullptr, &cloneBtn, nullptr, 
-  &quantBtn, nullptr, &selectBtn, &pitchBtn,
-  nullptr,  &arpBtn, &moveBtn, &randomizeBtn,
-  &redoBtn, &lengthBtn, &muteBtn, &undoBtn
+Button buttons[BUTTON_COUNT] = {
+  Button(), Button(), Button(), Button(), 
+  Button(), Button(), Button(), Button(),
+  Button(), Button(), Button(), Button(),
+  Button(), Button(), Button(), Button()
 };
 
-std::vector<Button*> activeButtons; // Buttons that are held, or fallingEdge == true.
+Command defaultButtonMapping[BUTTON_COUNT] = {
+  DELETE, NOTHING, CLONE, NOTHING, 
+  QUANTIZER, NOTHING, SELECT, PITCH,
+  NOTHING,  ARP, MOVE, RANDOMIZE,
+  REDO, LENGTH, MUTE, UNDO
+};
 
-Multiplexer switchMult = Multiplexer(D13, D12, D11, D10);
-Multiplexer switchLedMult = Multiplexer(D8, D7, D6, D5);
+Multiplexer switchMux = Multiplexer(D13, D12, D11, D10);
+Multiplexer switchLedMux = Multiplexer(D8, D7, D6, D5);
 
 float lastHighlightedStageIndicatorAngle = 0;
 bool lastSelectToggleState = true;
@@ -102,8 +93,7 @@ void loop() {
   
   renderIfDmaIsReady(
     undoRedoManager,
-    interactionManager, 
-    activeButtons
+    interactionManager
   );
 }
 
@@ -123,48 +113,63 @@ void loop1() {
   }
 }
 
-uint nextButtonIndex = 0;
+int8_t activeButtonIndexes[2] = {-1, -1};
 
 // Updates the state of one of the buttons, and progresses
 // the mux to the next button.
 // We update buttons one by one so we don't have to wait for the 
 // mux to settle.
 void updateButtons() {
-  Button *buttonToUpdate = buttons[nextButtonIndex];
-
-  // TODO: Rethink 
-  for (Button *x: buttons) {
-    if ( x != nullptr ) {
-      x->stabilizeState();
+  for (int i = 0; i < BUTTON_COUNT; i++) {
+    if (i == switchMux.getChannel()) {
+      //
+      buttons[i].update(!gpio_get(D9));
+    } else {
+      // 
+      buttons[i].stabilizeState();
     }
   }
 
-  if (buttonToUpdate != nullptr) {
-    buttonToUpdate->update(!gpio_get(D9));
-  }
+  switchMux.select((switchMux.getChannel() + 1) % BUTTON_COUNT);
 
-  nextButtonIndex += 1;
-  nextButtonIndex %= 16;
-  switchMult.select(nextButtonIndex);
+  // Find the primary command: active button with the earliest activation time
+  activeButtonIndexes[0] = -1;
 
-  activeButtons.clear();
-    
-  // Add all held buttons to the list. 
-  // Or buttons that just stopped being held. 
-  for (Button *x: buttons) {
-    bool isHeldOrFalling = x != nullptr && (x->held() || x->fallingEdge());
+  for (int i = 0; i < BUTTON_COUNT; i++) {
+    Button &curButton = buttons[i];
+    bool isHeldOrFalling = curButton.held() || curButton.fallingEdge();
+    unsigned long lastActivation = curButton.getLastActivation();
 
-    if (isHeldOrFalling) { 
-      activeButtons.push_back(x);
+    if (
+      isHeldOrFalling 
+      && (
+        activeButtonIndexes[0] == -1
+        || lastActivation < buttons[activeButtonIndexes[0]].getLastActivation()
+      )
+    ) { 
+      activeButtonIndexes[0] = i;
     }
   }
 
-  // Sort them by timestamp
-  std::sort(activeButtons.begin(), activeButtons.end(), 
-    [](Button *a, Button *b) { 
-      return a->getLastActivation() < b->getLastActivation(); 
+  // Find the modifier command: active button with the second earliest activation time
+  activeButtonIndexes[1] = -1;
+
+  for (int i = 0; i < BUTTON_COUNT; i++) {
+    Button &curButton = buttons[i];
+    bool isHeldOrFalling = curButton.held() || curButton.fallingEdge();
+    unsigned long lastActivation = curButton.getLastActivation();
+
+    if (
+      isHeldOrFalling
+      && i != activeButtonIndexes[0]
+      && (
+        activeButtonIndexes[1] == -1
+        || lastActivation < buttons[activeButtonIndexes[1]].getLastActivation()
+      )
+    ) { 
+      activeButtonIndexes[1] = i;
     }
-  );
+  }
 }
 
 float lastBpmPotState = 0;
@@ -174,7 +179,7 @@ void processInput() {
   endlessPot.update();
   updateButtons();
 
-  UserInputState userInputState = UserInputState(&endlessPot, activeButtons);
+  UserInputState userInputState = UserInputState(&endlessPot, activeButtonIndexes, buttons, defaultButtonMapping);
 
   // Limit jittering by slowing the rate we update the BPM
   if (millis() - lastUpdateBpmMillis > 0) {

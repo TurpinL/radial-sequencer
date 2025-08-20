@@ -34,4 +34,5 @@ public:
     LengthButtonHandler lengthButtonHandler;
     RandomizeButtonHandler randomizeButtonHandler;
     std::map<Command, IButtonHandler*> buttonHandlers;
+    UserInputState userInputState;
 };

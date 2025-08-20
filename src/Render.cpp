@@ -117,8 +117,7 @@ void swapScreenBuffer() {
 
 void renderIfDmaIsReady(
   UndoRedoManager &undoRedoManager,
-  InteractionManager &interactionManager,
-  const std::vector<Button*> &activeButtons
+  InteractionManager &interactionManager
 ) {
   if (!tft.dmaBusy()) {
     int32_t frameStartMillis = millis();
@@ -127,8 +126,7 @@ void renderIfDmaIsReady(
     swapScreenBuffer();
     render(
       undoRedoManager, 
-      interactionManager,
-      activeButtons
+      interactionManager
     );
 
     msPerFrame = msPerFrame * 0.9 + (millis() - frameStartMillis) * 0.1;
@@ -142,8 +140,7 @@ void renderIfDmaIsReady(
 
 void render(
     UndoRedoManager &undoRedoManager,
-    InteractionManager &interactionManager,
-    const std::vector<Button*> &activeButtons
+    InteractionManager &interactionManager
 ) {
   Sequence *sequence = undoRedoManager.getSequence();
 
@@ -284,11 +281,14 @@ void render(
   curScreen->drawString(msPerFrameStr, screenCenter.x, SCREEN_HEIGHT - 12, 1);
 
   // Debug
-  for (int i = 0; i < activeButtons.size(); i++) {
-    Vec2 pos = Vec2::fromPolar(SCREEN_HALF_WIDTH - 25, 290 - i * 10) + screenCenter;
-
+  if (interactionManager.userInputState.getBaseCommand() != NOTHING) {
     curScreen->setTextColor(COLOUR_SKIPPED);
-    curScreen->drawString(toString(activeButtons[i]->_command), pos.x, pos.y, 2);
+    curScreen->drawString(toString(interactionManager.userInputState.getBaseCommand()), screenCenter.x, 12, 2);
+
+    if (interactionManager.userInputState.getModifierCommand() != NOTHING) {
+      curScreen->setTextColor(COLOUR_SKIPPED);
+      curScreen->drawString(toString(interactionManager.userInputState.getModifierCommand()), screenCenter.x, 24, 1);
+    }
   }
 }
 

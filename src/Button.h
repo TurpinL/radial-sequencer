@@ -5,55 +5,8 @@
 
 #define DOUBLE_TAP_WINDOW_MS 200
 
-enum Command {
-    PITCH,
-    PULSES,
-    GATEMODE,
-    SKIP,
-    SELECT,
-    SLIDE,
-    CLONE,
-    MOVE,
-    DELETE,
-    UNDO,
-    REDO,
-    ARP,
-    QUANTIZER,
-    MUTE,
-    LENGTH,
-    RANDOMIZE,
-    NOTHING
-};
-
-inline String toString(Command command) {
-    switch(command) {
-        case PITCH:    return String("Pitch ");
-        case SKIP:     return String("Skip  ");
-        case SELECT:   return String("Select");
-        case SLIDE:    return String("Slide ");
-        case PULSES:   return String("Pulses");
-        case GATEMODE: return String("Mode  ");
-        case CLONE:    return String("Clone ");
-        case MOVE:     return String("Move  ");
-        case DELETE:   return String("Delete");
-        case UNDO:     return String("Undo  ");
-        case REDO:     return String("Redo  ");
-        case ARP:      return String("Arp   ");
-        case QUANTIZER:return String("Quant ");
-        case MUTE:     return String("Mute  ");
-        case LENGTH:   return String("Length");
-        case RANDOMIZE:return String("Random");
-        case NOTHING:  return String("None  ");
-        default:       return String("N/A   ");
-    }
-}
-
 class Button {
     public:
-        Button(Command command) {
-            _command = command;
-        }
-
         void update(bool isPressed) {
             _wasDoubleTapped = false;
             _didDoubleTapWindowPass = false;
@@ -114,12 +67,6 @@ class Button {
         unsigned long getLastActivation() {
             return _lastActivation;
         }
-
-        Command getCommand() {
-            return _command;
-        }
-
-        Command _command;
     private:
         uint8_t _state = 0;
         uint8_t _lastState = 0;

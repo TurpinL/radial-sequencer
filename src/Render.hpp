@@ -17,12 +17,10 @@ void updateAnimations(
 
 void render(
     UndoRedoManager &undoRedoManager,
-    InteractionManager &interactionManager,
-    const std::vector<Button*> &activeButtons
+    InteractionManager &interactionManager
 );
 
 void renderIfDmaIsReady(
     UndoRedoManager &undoRedoManager, 
-    InteractionManager &interactionManager,
-    const std::vector<Button*> &activeButtons
+    InteractionManager &interactionManager
 );

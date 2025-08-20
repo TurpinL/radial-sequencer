@@ -32,6 +32,7 @@ void InteractionManager::processQuantizerConfigInput(UndoRedoManager &undoRedoMa
 
 void InteractionManager::processInput(UndoRedoManager &undoRedoManager, UserInputState &userInputState) {
   Sequence &sequence = *undoRedoManager.getSequence();
+  this->userInputState = userInputState;
 
   // Hidden value used for... things?
   bool shouldResetHiddenValue = true;
