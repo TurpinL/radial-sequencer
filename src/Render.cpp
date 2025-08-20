@@ -24,7 +24,7 @@ float fps = 0;
 int32_t lastAnimationTickMillis = 0;
 float msPerFrame = 0;
 
-void drawStageOutput(float output, uint16_t colour, Vec2 pos);
+void drawStageOutput(float output, bool isMuted, uint16_t colour, Vec2 pos);
 void drawPulses(Stage& stage, float angle, Vec2 pos, int8_t currentPulseInStage, GateMode gateMode, float pulseAnticipation);
 void drawHeldPulses(Stage& stage, float angle, Vec2 pos, float pulseAnticipation);
 void drawPulsePips(Stage& stage, float angle, Vec2 pos, int8_t currentPulseInStage, GateMode gateMode);
@@ -58,6 +58,8 @@ void updateAnimations(
     lastAnimationTickMillis += 16;
 
     uint defaultStagePositionRadius = 48 + 3 * sequence->stageCount();
+    float stageAngleAccum = 0;
+    float degreesPerPulse = 360 / (float)sequence->pulseCount();
 
     for (size_t i = 0; i < sequence->stageCount(); i++) {
       Stage& stage = sequence->getStage(i);
@@ -75,10 +77,12 @@ void updateAnimations(
         targetRadius = 100;
       }
 
-      float targetAngle = i * degreesPerStage(sequence->stageCount());
+      float targetAngle = stageAngleAccum;
       if (interactionManager._isEditingPosition && isHighlighted) {
         stageDrawInfo.angle = targetAngle + interactionManager._hiddenValue;
       }
+
+      stageAngleAccum += degreesPerPulse * stage.pulseCount;
 
       bool isEditingGateModeOfThisStage = interactionManager.gateModeButtonHandler.isEditingGateMode() && (i == interactionManager._highlightedStageIndex || stage.isSelected);
       if (isEditingGateModeOfThisStage) {
@@ -145,46 +149,7 @@ void render(
 
   curScreen->fillSprite(COLOUR_BG);
 
-  float targetDegreesPerStage = 360 / (float)sequence->stageCount();
-
-  // Beat Indicator
-  if (true) {
-    size_t nextStageIndex = sequence->getNextStageIndex();
-    Stage &activeStage = sequence->getActiveStage();
-    StageDrawInfo& activeStageDrawInfo = undoRedoManager.stageDrawInfoById[activeStage.id];
-    Stage &nextStage = sequence->getStage(nextStageIndex);
-    StageDrawInfo& nextStageDrawInfo = undoRedoManager.stageDrawInfoById[nextStage.id];
-    float angle = activeStageDrawInfo.angle;
-    float polarRadius = activeStageDrawInfo.radius;
-    float progress = powf(sequence->getPulseAnticipation(), 2);
-
-    if (sequence->isLastPulseOfStage()) {
-      auto degToNextStage = degBetweenAngles(angle, nextStageDrawInfo.angle);
-
-      if (degToNextStage < 0) {
-        degToNextStage += 360; 
-      }
-
-      angle += degToNextStage * powf(progress, 2);
-      polarRadius = lerp(activeStageDrawInfo.radius, nextStageDrawInfo.radius, powf(progress, 2));
-    } 
-    
-    auto pos = Vec2::fromPolar(polarRadius, angle) + screenCenter;
-    uint32_t radius;
-
-    if (activeStage.gateMode == HELD) {
-      // Held note
-      radius = 12 + 4 * powf(1 - progress, 3);
-    } else if (activeStage.isPulseActive(sequence->getCurrentPulseInStage())) {
-      // Active pulse
-      radius = 2 + 16 * (1 - progress);
-    } else {
-      // Inactive pulse
-      radius = 10 + 2 * (1 - progress);
-    }
-
-    curScreen->fillCircle(pos.x, pos.y, radius, COLOUR_BEAT);
-  }
+  float targetDegreesPerStage = degreesPerStage(sequence->stageCount());
 
   // Stages
   for (size_t i = 0; i < sequence->stageCount(); i++) {
@@ -201,8 +166,6 @@ void render(
       colour = COLOUR_ACTIVE;
     } else if (isHighlighted) {
       colour = COLOUR_USER; 
-    } else if (curStage.isSkipped) {
-      colour = COLOUR_SKIPPED; 
     } else {
       colour = COLOUR_INACTIVE; 
     }
@@ -232,26 +195,26 @@ void render(
       }
     }
 
-    drawStageOutput(stageDrawInfo.output, colour, stagePos);
+    drawStageOutput(stageDrawInfo.output, curStage.gateMode == NONE, colour, stagePos);
 
     bool isEditingGateModeOfThisStage = interactionManager.gateModeButtonHandler.isEditingGateMode() && (i == interactionManager._highlightedStageIndex || curStage.isSelected);
     bool arePulsePipsAnimating = abs(degBetweenAngles(stageDrawInfo.pulsePipsAngle, curStage.pulsePipsAngle)) > 10;
 
-    if (curStage.gateMode == EACH || isEditingGateModeOfThisStage || arePulsePipsAnimating) {
-      drawPulses(curStage, stageDrawInfo.angle + stageDrawInfo.pulsePipsAngle, stagePos, isActive ? sequence->getCurrentPulseInStage() : -1, EACH, sequence->getPulseAnticipation());
-    }
+    // if (curStage.gateMode == EACH || isEditingGateModeOfThisStage || arePulsePipsAnimating) {
+    //   drawPulses(curStage, stageDrawInfo.angle + stageDrawInfo.pulsePipsAngle, stagePos, isActive ? sequence->getCurrentPulseInStage() : -1, EACH, sequence->getPulseAnticipation());
+    // }
 
-    if (curStage.gateMode == HELD || isEditingGateModeOfThisStage || arePulsePipsAnimating) {
-      drawPulses(curStage, stageDrawInfo.angle - 90 + stageDrawInfo.pulsePipsAngle, stagePos, isActive ? sequence->getCurrentPulseInStage() : -1, HELD, sequence->getPulseAnticipation());
-    }
+    // if (curStage.gateMode == HELD || isEditingGateModeOfThisStage || arePulsePipsAnimating) {
+    //   drawPulses(curStage, stageDrawInfo.angle - 90 + stageDrawInfo.pulsePipsAngle, stagePos, isActive ? sequence->getCurrentPulseInStage() : -1, HELD, sequence->getPulseAnticipation());
+    // }
 
-    if (curStage.gateMode == FIRST || isEditingGateModeOfThisStage || arePulsePipsAnimating) {
-      drawPulses(curStage, stageDrawInfo.angle - 180 + stageDrawInfo.pulsePipsAngle, stagePos, isActive ? sequence->getCurrentPulseInStage() : -1, FIRST, sequence->getPulseAnticipation());
-    }
+    // if (curStage.gateMode == FIRST || isEditingGateModeOfThisStage || arePulsePipsAnimating) {
+    //   drawPulses(curStage, stageDrawInfo.angle - 180 + stageDrawInfo.pulsePipsAngle, stagePos, isActive ? sequence->getCurrentPulseInStage() : -1, FIRST, sequence->getPulseAnticipation());
+    // }
 
-    if (curStage.gateMode == NONE || isEditingGateModeOfThisStage || arePulsePipsAnimating) {
-      drawPulses(curStage, stageDrawInfo.angle - 270 + stageDrawInfo.pulsePipsAngle, stagePos, isActive ? sequence->getCurrentPulseInStage() : -1, NONE, sequence->getPulseAnticipation());
-    }
+    // if (curStage.gateMode == NONE || isEditingGateModeOfThisStage || arePulsePipsAnimating) {
+    //   drawPulses(curStage, stageDrawInfo.angle - 270 + stageDrawInfo.pulsePipsAngle, stagePos, isActive ? sequence->getCurrentPulseInStage() : -1, NONE, sequence->getPulseAnticipation());
+    // }
 
     if (curStage.isSkipped) { drawStageStrikethrough(stagePos); }
 
@@ -324,7 +287,7 @@ void render(
   for (int i = 0; i < activeButtons.size(); i++) {
     Vec2 pos = Vec2::fromPolar(SCREEN_HALF_WIDTH - 25, 290 - i * 10) + screenCenter;
 
-    curScreen->setTextColor(COLOUR_INACTIVE);
+    curScreen->setTextColor(COLOUR_SKIPPED);
     curScreen->drawString(toString(activeButtons[i]->_command), pos.x, pos.y, 2);
   }
 }
@@ -393,7 +356,7 @@ void drawHeldPulses(Stage& stage, float angle, Vec2 pos, int8_t currentPulseInSt
       pos.x, pos.y, // Position
       rowRadius + 2, rowRadius - 1, // Radius, Inner Radius
       startAngle, endAngle, // Arc start & end 
-      (stage.isSkipped) ? COLOUR_SKIPPED : COLOUR_INACTIVE, COLOUR_BG, // Colour, AA Colour
+      (stage.isSkipped || stage.gateMode == NONE) ? COLOUR_SKIPPED : COLOUR_INACTIVE, COLOUR_BG, // Colour, AA Colour
       false // Smoothing
     );
 
@@ -419,34 +382,39 @@ void drawPulses(Stage& stage, float angle, Vec2 pos, int8_t currentPulseInStage,
   }
 }
 
-void drawStageOutput(float output, uint16_t colour, Vec2 pos) {
+void drawStageOutput(float output, bool isMuted, uint16_t colour, Vec2 pos) {
   int octave = (int)output;
   float semitone = output - octave;
+  uint16_t lowOctaveColour = lerpColour(colour, COLOUR_BG, 0.33f);
 
-  if (semitone < 0.5) {
-    curScreen->fillSmoothCircle(
-      pos.x, pos.y,
-      semitone * 8 + 2,
-      colour, COLOUR_BG
-    );
+  if (isMuted) {
+    Vec2 cornerTL = pos + Vec2(-3, -3);
+    Vec2 cornerTR = pos + Vec2( 3, -3);
+    Vec2 cornerBL = pos + Vec2(-3,  3);
+    Vec2 cornerBR = pos + Vec2( 3,  3);
+
+    curScreen->drawLine(cornerTL.x, cornerTL.y, cornerBR.x, cornerBR.y, lowOctaveColour);
+    curScreen->drawLine(cornerTR.x, cornerTR.y, cornerBL.x, cornerBL.y, lowOctaveColour);
   } else {
-    curScreen->drawArc(
-      pos.x, pos.y, // Position
-      semitone * 8 + 2, (semitone - 0.5) * 2 * 11, // Radius, Inner Radius
-      0, 359, // Arc start & end 
-      colour, COLOUR_BG, // Colour, AA Colour
-      true // Smoothing
-    );
-  }
+    if (octave >= 1) {
+      curScreen->fillSmoothCircle(
+        pos.x, pos.y,
+        9,
+        lowOctaveColour, COLOUR_BG
+      );
 
-  for (int i = 0; i < octave; i++) {
-    float extraSize = max(0, semitone * 8 - 8 + 3);
-
-    curScreen->drawCircle(
-      pos.x, pos.y,
-      10 + 2 * i + extraSize,
-      colour
-    );
+      curScreen->fillSmoothCircle(
+        pos.x, pos.y,
+        semitone * 8 + 1,
+        colour, lowOctaveColour
+      );
+    } else {
+      curScreen->fillSmoothCircle(
+        pos.x, pos.y,
+        semitone * 8 + 1,
+        lowOctaveColour, COLOUR_BG
+      );
+    }
   }
 }
 

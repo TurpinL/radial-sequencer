@@ -19,6 +19,9 @@ enum Command {
     REDO,
     ARP,
     QUANTIZER,
+    MUTE,
+    LENGTH,
+    RANDOMIZE,
     NOTHING
 };
 
@@ -37,6 +40,9 @@ inline String toString(Command command) {
         case REDO:     return String("Redo  ");
         case ARP:      return String("Arp   ");
         case QUANTIZER:return String("Quant ");
+        case MUTE:     return String("Mute  ");
+        case LENGTH:   return String("Length");
+        case RANDOMIZE:return String("Random");
         case NOTHING:  return String("None  ");
         default:       return String("N/A   ");
     }

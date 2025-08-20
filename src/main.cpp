@@ -49,11 +49,14 @@ Button arpBtn = Button(ARP);
 Button quantBtn = Button(QUANTIZER);
 Button cloneBtn = Button(CLONE);
 Button deleteBtn = Button(DELETE);
+Button muteBtn = Button(MUTE);
+Button lengthBtn = Button(LENGTH);
+Button randomizeBtn = Button(RANDOMIZE);
 std::vector<Button*> buttons = {
   &deleteBtn, nullptr, &cloneBtn, nullptr, 
   &quantBtn, nullptr, &selectBtn, &pitchBtn,
-  nullptr,  &arpBtn, &moveBtn, nullptr,
-  &redoBtn, &pulsesBtn, &gatemodeBtn, &undoBtn
+  nullptr,  &arpBtn, &moveBtn, &randomizeBtn,
+  &redoBtn, &lengthBtn, &muteBtn, &undoBtn
 };
 
 std::vector<Button*> activeButtons; // Buttons that are held, or fallingEdge == true.

@@ -5,7 +5,10 @@ InteractionManager::InteractionManager() {
         {GATEMODE, &gateModeButtonHandler},
         {SELECT, &selectButtonHandler},
         {PITCH, &pitchButtonHandler},
-        {ARP, &arpButtonHandler}
+        {ARP, &arpButtonHandler},
+        {MUTE, &muteButtonHandler},
+        {LENGTH, &lengthButtonHandler},
+        {RANDOMIZE, &randomizeButtonHandler}
     };
 }
 

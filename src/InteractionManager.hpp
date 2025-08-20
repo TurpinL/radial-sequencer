@@ -8,6 +8,9 @@
 #include "ButtonHandlers/SelectButtonHandler.hpp"
 #include "ButtonHandlers/GateModeButtonHandler.hpp"
 #include "ButtonHandlers/ArpButtonHandler.hpp"
+#include "ButtonHandlers/MuteButtonHandler.hpp"
+#include "ButtonHandlers/LengthButtonHandler.hpp"
+#include "ButtonHandlers/RandomizeButtonHandler.hpp"
 
 class InteractionManager {
 public:
@@ -27,5 +30,8 @@ public:
     SelectButtonHandler selectButtonHandler;
     PitchButtonHandler pitchButtonHandler;
     ArpButtonHandler arpButtonHandler;
+    MuteButtonHandler muteButtonHandler;
+    LengthButtonHandler lengthButtonHandler;
+    RandomizeButtonHandler randomizeButtonHandler;
     std::map<Command, IButtonHandler*> buttonHandlers;
 };

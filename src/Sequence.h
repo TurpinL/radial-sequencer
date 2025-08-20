@@ -21,9 +21,10 @@ class Sequence {
 
             for (int i = 0; i < stageCount; i++) {
                 addStage();
-                _stages.back().pulseCount = (rand() % 2) + 1;
+                // _stages.back().pulseCount = (rand() % 2) + 1;
+                _stages.back().pulseCount = 1;
                 _stages.back().setOutput((rand() % 100) / 50.f);
-                _stages.back().gateMode = EACH;
+                _stages.back().gateMode = (rand() % 4 == 0) ? NONE : HELD;
             }
 
             _updateMicrosPerPulse();
@@ -160,6 +161,16 @@ class Sequence {
 
         size_t stageCount() {
             return _stages.size();
+        }
+
+        size_t pulseCount() {
+            size_t pulseCount = 0;
+
+            for (size_t i = 0; i < _stages.size(); i++) {
+                pulseCount += _stages.at(i).pulseCount;
+            }
+
+            return pulseCount;
         }
 
         void updateNextStageIndex() {
